@@ -155,7 +155,7 @@ DEFAULT_PER_PAGE = 15
 API_KEY_STORE = os.getenv('API_SECRET_KEY')
 GEOIP_DB_PATH = os.getenv('GEOIP_DB_PATH')
 
-# --- GeoIP Initialization ---
+
 geoip_reader: Optional[geoip2.database.Reader] = None
 if GEOIP_DB_PATH:
     try:
@@ -170,14 +170,14 @@ if GEOIP_DB_PATH:
 else:
     print("GEOIP_DB_PATH not set in environment. GeoIP lookups will be disabled.")
 
-# Optional: Close reader on shutdown
+
 @app.on_event("shutdown")
 def shutdown_event():
     if geoip_reader:
         geoip_reader.close()
         print("GeoIP database closed.")
 
-# --- GeoIP Helper Functions ---
+
 
 def get_country_code_for_ip(ip_address: Optional[str]) -> Optional[str]:
     """Looks up the country code for a given IP address using the loaded GeoIP database."""
@@ -187,20 +187,20 @@ def get_country_code_for_ip(ip_address: Optional[str]) -> Optional[str]:
         response = geoip_reader.country(ip_address)
         return response.country.iso_code
     except AddressNotFoundError:
-        # IP address not found in the database (e.g., private, reserved, or not geolocatable)
+        
         return None
     except ValueError as e:
-        # Invalid IP address format
+        
         print(f"GeoIP lookup error: Invalid IP format '{ip_address}'. {e}")
         return None
     except Exception as e:
-        # Catch other potential errors from geoip2 library
+        
         print(f"GeoIP lookup error for IP '{ip_address}': {e}")
         return None
 
-# --- Click Logging Function ---
-# TODO: Ensure yourls_log table exists with appropriate columns
-# (click_time DATETIME, shorturl VARCHAR(200), referrer VARCHAR(200), user_agent VARCHAR(255), ip_address VARCHAR(41), country_code CHAR(2))
+
+
+
 
 def log_click(keyword: str, ip_address: Optional[str], country_code: Optional[str], referrer: Optional[str], user_agent: Optional[str]):
     """Logs a click event to the database."""
@@ -218,8 +218,8 @@ def log_click(keyword: str, ip_address: Optional[str], country_code: Optional[st
         cursor.execute(query, {
             'click_time': datetime.utcnow(),
             'shorturl': keyword,
-            'referrer': referrer[:200] if referrer else None, # Truncate
-            'user_agent': user_agent[:255] if user_agent else None, # Truncate
+            'referrer': referrer[:200] if referrer else None, 
+            'user_agent': user_agent[:255] if user_agent else None, 
             'ip_address': ip_address,
             'country_code': country_code
         })
@@ -515,17 +515,17 @@ templates.env.globals['get_notifications'] = get_notifications
 ADMIN_USERNAME_STORE = os.getenv('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD_HASH_STORE = os.getenv('ADMIN_PASSWORD_HASH')
 
-# Setup password hashing context
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Function to verify password
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    if not hashed_password: # Handle case where hash is not set
+    if not hashed_password: 
         return False
     try:
         return pwd_context.verify(plain_password, hashed_password)
     except Exception as e:
-        print(f"Error verifying password: {e}") # Log potential errors
+        print(f"Error verifying password: {e}") 
         return False
 
 async def get_current_user_or_redirect(request: Request):
@@ -547,7 +547,7 @@ async def get_current_user_or_redirect(request: Request):
     return user_id 
 
 
-# --- CSRF Protection Helpers ---
+
 CSRF_TOKEN_SESSION_KEY = "_csrf_token"
 
 def get_csrf_token(request: Request) -> str:
@@ -556,9 +556,9 @@ def get_csrf_token(request: Request) -> str:
     if not token:
         token = secrets.token_hex(32)
         request.session[CSRF_TOKEN_SESSION_KEY] = token
-        # Ensure session is marked as modified if we add the token
-        # SessionMiddleware might do this automatically, but explicit is safer
-        # request.session.modified = True 
+        
+        
+        
     return token
 
 async def verify_csrf_token(request: Request, csrf_token: str = Form(...)):
@@ -567,9 +567,9 @@ async def verify_csrf_token(request: Request, csrf_token: str = Form(...)):
     if not stored_token or not csrf_token or not secrets.compare_digest(stored_token, csrf_token):
         print(f"CSRF verification failed. Stored: {stored_token}, Received: {csrf_token}")
         raise HTTPException(status_code=403, detail="CSRF token mismatch or missing.")
-    return True # Indicate success
+    return True 
 
-# Add get_csrf_token to template globals so forms can access it
+
 templates.env.globals['get_csrf_token'] = get_csrf_token
 
 
@@ -586,19 +586,19 @@ async def login_get(request: Request):
 async def login_post(request: Request, 
                      username: str = Form(...), 
                      password: str = Form(...),
-                     _=Depends(verify_csrf_token)): # Add CSRF dependency
-    # Verify username and HASHED password
+                     _=Depends(verify_csrf_token)): 
+    
     if username == ADMIN_USERNAME_STORE and verify_password(password, ADMIN_PASSWORD_HASH_STORE):
-        # Set user ID in session
-        request.session['user_id'] = 'admin' # Use a simple identifier
-        add_notification(request, "Logged in successfully.", "success") # Use notification
         
-        # Redirect to originally requested page or index
-        # Ensure default is also string if used directly
+        request.session['user_id'] = 'admin' 
+        add_notification(request, "Logged in successfully.", "success") 
+        
+        
+        
         default_next = str(request.url_for('admin_index_get')) 
         next_url = request.query_params.get('next', default_next)
-        # Basic validation for open redirect vulnerability
-        # Convert base_url to string for comparison
+        
+        
         if not next_url.startswith('/') and not next_url.startswith(str(request.base_url)):
              next_url = default_next
         return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
@@ -606,10 +606,10 @@ async def login_post(request: Request,
         if not ADMIN_PASSWORD_HASH_STORE:
              add_notification(request, "Password check is not configured correctly on the server.", "error")
         else:
-             add_notification(request, "Invalid username or password.", "error") # Use notification
-        # Redirect back to login page
-        login_url_base = str(request.url_for('login_get')) # Convert to string
-        login_url = login_url_base + "?error=1" # Keep error param for potential JS use
+             add_notification(request, "Invalid username or password.", "error") 
+        
+        login_url_base = str(request.url_for('login_get')) 
+        login_url = login_url_base + "?error=1" 
         return RedirectResponse(url=login_url, status_code=status.HTTP_302_FOUND)
 
 @app.get("/logout", response_class=RedirectResponse, name="logout")
@@ -641,63 +641,70 @@ async def admin_index_get(request: Request, user_id: str = Depends(get_current_u
 
 @app.route("/", methods=["GET", "POST"], name="admin_index_post")
 async def add_link_endpoint(request: Request, 
-                        # Form parameters (for POST)
+                        
                         url: Optional[str] = Form(None), 
                         keyword: Optional[str] = Form(None), 
                         title: Optional[str] = Form(None),
-                        # Query parameters (for GET/Bookmarklets)
-                        up: Optional[str] = None, # URL protocol from bookmarklet
-                        us: Optional[str] = None, # URL slashes from bookmarklet
-                        ur: Optional[str] = None, # URL rest from bookmarklet
-                        t: Optional[str] = None, # Title from bookmarklet
-                        s: Optional[str] = None, # Selection from bookmarklet (becomes title)
-                        k: Optional[str] = None, # Keyword from bookmarklet
-                        share: Optional[str] = None, # Share target (facebook, twitter, etc.)
-                        jsonp: Optional[str] = None, # JSONP callback name
-                        # Dependency
+                        
+                        up: Optional[str] = None, 
+                        us: Optional[str] = None, 
+                        ur: Optional[str] = None, 
+                        t: Optional[str] = None, 
+                        s: Optional[str] = None, 
+                        k: Optional[str] = None, 
+                        share: Optional[str] = None, 
+                        jsonp: Optional[str] = None, 
+                        
                         user_id: str = Depends(get_current_user_or_redirect),
-                        # Add CSRF verification dependency
-                        # Note: This will only run fully if it's a POST request with form data
-                        # For GET, verify_csrf_token expects Form data which won't exist.
-                        # We need conditional verification or a different approach if GET needs CSRF.
-                        # Let's modify verify_csrf_token to handle this or add check here.
-                        # Let's add check inside the function for now.
+                        
+                        
+                        
+                        
+                        
+                        
                         csrf_token: Optional[str] = Form(None)): 
 
     is_bookmarklet = request.method == "GET" and ur is not None
-    is_share_request = request.method == "GET" and share is not None
+    is_share_request = request.method == "GET" and share is not None 
     jsonp_callback = jsonp 
 
-    # --- CSRF Check for POST requests --- 
+    
     if request.method == "POST":
-        # Manually verify token for POST. 
-        # This avoids adding Depends which tries to read Form data on GET.
+        
+        
         stored_token = request.session.get(CSRF_TOKEN_SESSION_KEY)
         if not stored_token or not csrf_token or not secrets.compare_digest(stored_token, csrf_token):
             print(f"CSRF verification failed for POST. Stored: {stored_token}, Received: {csrf_token}")
-            # Return error appropriate for form POST (usually redirect back or show error page)
+            
             add_notification(request, "Security token mismatch. Please try submitting the form again.", "error")
-            # Redirect back to where the form was likely submitted from (admin index)
+            
             return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
         else:
-            # Optionally consume the token after successful POST verification if desired
-            # del request.session[CSRF_TOKEN_SESSION_KEY]
-            # request.session.modified = True
-            pass # Token verified for POST
+            
+            
+            
+            pass 
             
     source_url = None
     source_keyword = None
     source_title = ""
 
-    # Determine source based on request type (POST Form, GET Bookmarklet, GET Share)
+    
     if is_bookmarklet or is_share_request:
         try:
             protocol = unquote_plus(up) if up else 'http:' 
             slashes = unquote_plus(us) if us else '//'
-            rest_of_url = unquote_plus(ur) if ur else ''
+            
+            rest_of_url = unquote_plus(ur if ur is not None else '') 
             if not rest_of_url:
-                 raise ValueError("Missing URL part (ur) in bookmarklet/share request")
-            source_url = f"{protocol}{slashes}{rest_of_url}"
+                 
+                 source_url_direct = params.get('url')
+                 if source_url_direct:
+                     source_url = unquote_plus(source_url_direct)
+                 else:
+                     raise ValueError("Missing URL part (ur or url) in bookmarklet/share request")
+            else:
+                source_url = f"{protocol}{slashes}{rest_of_url}"
             source_keyword = unquote_plus(k) if k else None
             source_title = unquote_plus(s) if s else (unquote_plus(t) if t else "")
             source_title = source_title.strip()
@@ -710,15 +717,15 @@ async def add_link_endpoint(request: Request,
                 add_notification(request, "Error processing bookmarklet/share request.", "error")
                 return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
     elif request.method == "POST":
-        # Form submission
+        
         source_url = url.strip() if url else None
         source_keyword = keyword.strip() if keyword else None
         source_title = title.strip() if title else ""
     else:
-        # Should not happen due to route definition, but good practice
+        
         raise HTTPException(status_code=405, detail="Method Not Allowed")
 
-    # --- Validate URL --- 
+    
     if not source_url:
         message = "URL is required."
         if jsonp:
@@ -737,47 +744,41 @@ async def add_link_endpoint(request: Request,
             add_notification(request, message, 'error')
             return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
-    # --- Add Link --- 
+    
     result_data = await add_new_link_core(request, source_url, source_keyword, source_title)
 
-    # --- Handle Response (JSONP, Share, Standard Redirect) --- 
+    
     if jsonp_callback:
-        # Instant bookmarklet response
+        
         js_body = f"{jsonp_callback}({jsonable_encoder(result_data)});"
         return PlainTextResponse(js_body, media_type="application/javascript")
+        
     elif is_share_request and result_data.get("status") == "success":
-        # Social Share bookmarklet - redirect to social network
+        
         short_url = result_data.get('shorturl')
-        share_title = result_data.get('url', {}).get('title', '')
+        
+        share_title = result_data.get('url', {}).get('title') or source_title 
         
         if not short_url:
              add_notification(request, "Failed to get short URL for sharing.", "error")
              return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
 
         share_url = ""
-        encoded_url = urlencode({'url': short_url})[4:] # Remove 'url='
-        encoded_title = urlencode({'title': share_title})[6:] # Remove 'title='
+        
+        encoded_url = urllib.parse.quote(short_url)
+        encoded_title = urllib.parse.quote(share_title or '') 
 
         if share == 'facebook':
             share_url = f"https://www.facebook.com/sharer/sharer.php?u={encoded_url}"
         elif share == 'twitter':
-            # Twitter text limit needs care - prioritize URL
+            
             base_tweet_url = "https://twitter.com/intent/tweet"
-            params = {'url': short_url}
-            if share_title:
-                # Simple truncation - might need smarter logic for hashtags/mentions
-                max_title_len = 280 - len(short_url) - 2 # Account for spaces/URL length
-                params['text'] = share_title[:max_title_len] 
-            share_url = f"{base_tweet_url}?{urlencode(params)}"
-        elif share == 'tumblr':
-             # Tumblr has name/description which map well to title/original_url
-             params = {
-                 'url': short_url,
-                 'name': share_title,
-                 'description': source_url # Use original URL as description?
-             }
-             share_url = f"https://www.tumblr.com/share/link?{urlencode(params)}"
-        # Add other networks (e.g., LinkedIn, Pinterest, email) here if needed
+            
+            tweet_text = f"{share_title} {short_url}" if share_title else short_url
+            encoded_text = urllib.parse.quote(tweet_text)
+            share_url = f"{base_tweet_url}?text={encoded_text}"
+        
+        
         else:
              add_notification(request, f"Unknown share target: {share}", "warning")
              return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
@@ -785,16 +786,16 @@ async def add_link_endpoint(request: Request,
         if share_url:
             print(f"Redirecting to share URL: {share_url}")
             return RedirectResponse(url=share_url, status_code=status.HTTP_303_SEE_OTHER)
-        else: # Should not happen if target is known, but fallback
+        else: 
              add_notification(request, "Could not generate share link.", "error")
              return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
 
     elif is_share_request and result_data.get("status") != "success":
-        # Failed to shorten link during a share request
+        
         add_notification(request, f"Failed to shorten link: {result_data.get('message', 'Unknown error')}", "error")
         return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
     else:
-        # Standard Form POST or Standard Bookmarklet response
+        
         notification_type = 'success' if result_data.get("status") == "success" else 'error'
         add_notification(request, result_data.get("message", "Operation finished."), notification_type)
         return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
@@ -804,7 +805,7 @@ async def add_link_endpoint(request: Request,
 async def delete_link_post(request: Request, 
                          keyword: str, 
                          user_id: str = Depends(get_current_user_or_redirect),
-                         _=Depends(verify_csrf_token)): # Add CSRF dependency
+                         _=Depends(verify_csrf_token)): 
     if not keyword: 
         print("Error: Invalid keyword for deletion.")
         return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
@@ -837,7 +838,7 @@ async def delete_link_post(request: Request,
 
 @app.get("/stats/{keyword}", response_class=HTMLResponse, name="link_stats")
 async def link_stats_get(request: Request, keyword: str, user_id: str = Depends(get_current_user_or_redirect)): 
-    # Sanitize keyword less strictly for lookup/display
+    
     sanitized_keyword = sanitize_keyword(keyword)
     if not sanitized_keyword:
          raise HTTPException(status_code=404, detail="Invalid keyword format.")
@@ -854,7 +855,7 @@ async def link_stats_get(request: Request, keyword: str, user_id: str = Depends(
     try:
         cursor = conn.cursor(dictionary=True)
         
-        # 1. Get main link details
+        
         query_link = "SELECT url, title, timestamp, ip, clicks FROM yourls_url WHERE keyword = %(keyword)s"
         cursor.execute(query_link, {'keyword': sanitized_keyword})
         link_details = cursor.fetchone()
@@ -862,12 +863,12 @@ async def link_stats_get(request: Request, keyword: str, user_id: str = Depends(
         if not link_details:
              raise HTTPException(status_code=404, detail="Short URL not found.")
 
-        # Add keyword and shorturl to details for template
+        
         link_details['keyword'] = sanitized_keyword
         link_details['shorturl'] = str(request.url_for('redirect_link', keyword=sanitized_keyword))
-        link_details['date'] = link_details['timestamp'] # Alias for template compatibility
+        link_details['date'] = link_details['timestamp'] 
 
-        # 2. Get Country Statistics from logs
+        
         query_countries = """SELECT country_code, COUNT(*) as count 
                            FROM yourls_log 
                            WHERE shorturl = %(keyword)s AND country_code IS NOT NULL
@@ -875,40 +876,40 @@ async def link_stats_get(request: Request, keyword: str, user_id: str = Depends(
                            ORDER BY count DESC"""
         cursor.execute(query_countries, {'keyword': sanitized_keyword})
         country_results = cursor.fetchall()
-        # Convert to dictionary {code: count}
+        
         country_stats = {row['country_code']: row['count'] for row in country_results}
         
-        # 3. Get recent click history (e.g., last 20)
+        
         query_history = """SELECT click_time, referrer, user_agent, ip_address, country_code 
                            FROM yourls_log 
                            WHERE shorturl = %(keyword)s 
                            ORDER BY click_time DESC 
-                           LIMIT 20""" # Add limit for performance
+                           LIMIT 20""" 
         cursor.execute(query_history, {'keyword': sanitized_keyword})
         click_history = cursor.fetchall()
         
-        # (Optional) Add country names to history/stats here if needed
-        # for row in click_history:
-        #    row['country_name'] = yourls_geo_countrycode_to_countryname(row['country_code']) # Requires this function
-        # country_stats_with_names = {code: {'count': count, 'name': yourls_geo_countrycode_to_countryname(code)} for code, count in country_stats.items()} 
+        
+        
+        
+        
 
     except Error as e:
         print(f"DB Error fetching stats for {sanitized_keyword}: {e}")
-        # Show partial data or error?
+        
         add_notification(request, "Error fetching statistics details.", "error")
-        # Allow rendering with potentially partial data or raise 503?
-        # For now, continue and template might show missing data.
+        
+        
     finally:
         if cursor: cursor.close()
         if conn.is_connected(): conn.close()
 
     context = {
         "request": request,
-        "link": link_details, # Contains main details + keyword/shorturl/date
-        "country_stats": country_stats, # Dict {code: count}
-        "click_history": click_history, # List of recent clicks
-        "notifications": get_notifications(request), # Get flash messages
-        # TODO: Add other necessary stats (like historical clicks if needed)
+        "link": link_details, 
+        "country_stats": country_stats, 
+        "click_history": click_history, 
+        "notifications": get_notifications(request), 
+        
     }
     return templates.TemplateResponse("link_stats.html", context)
 
@@ -950,14 +951,14 @@ async def edit_link_get(request: Request, keyword: str, user_id: str = Depends(g
 
 @app.post("/edit/{keyword}", response_class=RedirectResponse, name="edit_link_post")
 async def edit_link_post(request: Request, 
-                         keyword: str, # Original keyword from path
+                         keyword: str, 
                          url: str = Form(...), 
-                         new_keyword: str = Form(..., alias="keyword"), # New keyword from form
+                         new_keyword: str = Form(..., alias="keyword"), 
                          title: Optional[str] = Form(None),
                          user_id: str = Depends(get_current_user_or_redirect),
-                         _=Depends(verify_csrf_token)): # Add CSRF dependency
-    # Sanitize original keyword from path less strictly for potential use in redirect URL
-    original_keyword_lookup = sanitize_keyword(keyword) # False default
+                         _=Depends(verify_csrf_token)): 
+    
+    original_keyword_lookup = sanitize_keyword(keyword) 
     
     new_url_strip = url.strip()
     new_keyword_strip = new_keyword.strip()
@@ -1249,7 +1250,7 @@ async def tools_get(request: Request, user_id: str = Depends(get_current_user_or
     safe_base_url = base_bookmarklet_url.replace("'", "\\'") 
 
     
-    standard_simple_js = '''
+    standard_simple_js = """
         var d=document,w=window,enc=encodeURIComponent,e=w.getSelection,k=d.getSelection,x=d.selection,
             s=(e?e():(k?k():(x?x.createRange().text:0))),s2=((s.toString()=='')?s:enc(s)),
             f='{base_url}',l=d.location.href,
@@ -1257,18 +1258,18 @@ async def tools_get(request: Request, user_id: str = Depends(get_current_user_or
             p='?up='+enc(ups[0]+':')+'&us='+enc(ups[1])+'&ur='+enc(ur)+'&t='+enc(d.title)+'&s='+s2,u=f+p;
         try{{throw('ozh');}}catch(z){{a=function(){{if(!w.open(u))l.href=u;}};if(/Firefox/.test(navigator.userAgent))setTimeout(a,0);else a();}}
         void(0);
-    '''.format(base_url=safe_base_url)
+    """.format(base_url=safe_base_url)
 
-    popup_simple_js = '''
+    popup_simple_js = """
         var d=document,sc=d.createElement('script'),l=d.location.href,enc=encodeURIComponent,
             ups=l.match(/^[a-zA-Z0-9\+\.-]+:(\/\/)?/)[0],ur=l.split(new RegExp(ups))[1],ups=ups.split(/:/),
             p='?up='+enc(ups[0]+':')+'&us='+enc(ups[1])+'&ur='+enc(ur)+'&t='+enc(d.title);
         window.yourls_callback=function(r){{if(r.shorturl){{prompt(r.message,r.shorturl);}}else{{alert('An error occurred: '+r.message);}};}};
         sc.src='{base_url}'+p+'&jsonp=yourls_callback';
         void(d.body.appendChild(sc));
-    '''.format(base_url=safe_base_url)
+    """.format(base_url=safe_base_url)
 
-    custom_standard_js = '''
+    custom_standard_js = """
         var d=document,enc=encodeURIComponent,w=window,e=w.getSelection,k_sel=d.getSelection,x=d.selection,
             s=(e?e():(k_sel?k_sel():(x?x.createRange().text:0))),s2=((s.toString()=='')?s:enc(s)),
             f='{base_url}',l=d.location.href,
@@ -1276,29 +1277,33 @@ async def tools_get(request: Request, user_id: str = Depends(get_current_user_or
             k=prompt("Custom keyword for "+l),k2=(k?'&k='+enc(k):""),
             p='?up='+enc(ups[0]+':')+'&us='+enc(ups[1])+'&ur='+enc(ur)+'&t='+enc(d.title)+'&s='+s2+k2,u=f+p;
         if(k!=null){{try{{throw('ozh');}}catch(z){{a=function(){{if(!w.open(u))l.href=u;}};if(/Firefox/.test(navigator.userAgent))setTimeout(a,0);else a();}}void(0)}}
-    '''.format(base_url=safe_base_url)
+    """.format(base_url=safe_base_url)
 
-    custom_popup_js = '''
+    custom_popup_js = """
         var d=document,l=d.location.href,k=prompt('Custom keyword for '+l),enc=encodeURIComponent,
             ups=l.match(/^[a-zA-Z0-9\+\.-]+:(\/\/)?/)[0],ur=l.split(new RegExp(ups))[1],ups=ups.split(/:/),
             p='?up='+enc(ups[0]+':')+'&us='+enc(ups[1])+'&ur='+enc(ur)+'&t='+enc(d.title),sc=d.createElement('script');
         if(k!=null){{window.yourls_callback=function(r){{if(r.shorturl){{prompt(r.message,r.shorturl);}}else{{alert('An error occurred: '+r.message);}};}};sc.src='{base_url}'+p+'&k='+enc(k)+'&jsonp=yourls_callback';void(d.body.appendChild(sc));}}
-    '''.format(base_url=safe_base_url)
+    """.format(base_url=safe_base_url)
 
-    facebook_js = '''
+    
+    facebook_js = """
         var d=document,w=window,enc=encodeURIComponent,l=d.location.href,
-            f='{base_url}',p='?url='+enc(l)+'&source=fb_bm';
+            f='""" + safe_base_url + """',p='?url='+enc(l)+'&source=fb_bm&share=facebook'; {
         a=function(){{if(!w.open(f+p))l.href=f+p;}};if(/Firefox/.test(navigator.userAgent))setTimeout(a,0);else a();void(0);
-    '''.format(base_url=safe_base_url)
+    """
 
-    twitter_js = '''
+    twitter_js = """
         var d=document,w=window,enc=encodeURIComponent,l=d.location.href,
             s=w.getSelection?w.getSelection():(d.getSelection?d.getSelection():(d.selection?d.selection.createRange().text:0)),
             s2=((s.toString()=='')?s:enc(' "' + s + '"')),
-            f='{base_url}',p='?url='+enc(l)+'&title='+enc(d.title)+s2+'&source=tw_bm';
+            f='""" + safe_base_url + """',p='?url='+enc(l)+'&title='+enc(d.title)+s2+'&source=tw_bm&share=twitter'; {
         a=function(){{if(!w.open(f+p))l.href=f+p;}};if(/Firefox/.test(navigator.userAgent))setTimeout(a,0);else a();void(0);
-    '''.format(base_url=safe_base_url)
+    """
     
+    
+    
+
     bookmarklets = {
         'standard_simple': make_bookmarklet(standard_simple_js),
         'popup_simple': make_bookmarklet(popup_simple_js),
@@ -1320,12 +1325,12 @@ async def tools_get(request: Request, user_id: str = Depends(get_current_user_or
 
 @app.get("/{keyword}", response_class=RedirectResponse, name="redirect_link")
 async def redirect_link_get(request: Request, keyword: str):
-    # Sanitize keyword less strictly for lookup
-    sanitized_keyword = sanitize_keyword(keyword) # restrict_to_shorturl_charset=False (default)
+    
+    sanitized_keyword = sanitize_keyword(keyword) 
     
     if not sanitized_keyword:
-        # Or redirect to a default page, or show a 404 through the main app error handler?
-        # For now, raise 404 which FastAPI should handle.
+        
+        
         raise HTTPException(status_code=404, detail="Short URL not found")
 
     conn = get_db_connection()
@@ -1333,7 +1338,7 @@ async def redirect_link_get(request: Request, keyword: str):
     if conn:
         cursor = None
         try:
-            # Fetch the target URL
+            
             cursor = conn.cursor(dictionary=True)
             query_select = "SELECT url FROM yourls_url WHERE keyword = %(keyword)s LIMIT 1"
             cursor.execute(query_select, {'keyword': sanitized_keyword})
@@ -1341,47 +1346,47 @@ async def redirect_link_get(request: Request, keyword: str):
             if result and result['url']:
                 target_url = result['url']
                 
-                # --- Log Click and Increment Counter (only if found) ---
+                
                 try:
-                    # Increment click counter optimistically first
-                    query_update = "UPDATE yourls_url SET clicks = clicks + 1 WHERE keyword = %(keyword)s"
-                    # Reuse cursor is fine here
-                    cursor.execute(query_update, {'keyword': sanitized_keyword})
-                    conn.commit() # Commit click increment
                     
-                    # Get GeoIP info and log details
+                    query_update = "UPDATE yourls_url SET clicks = clicks + 1 WHERE keyword = %(keyword)s"
+                    
+                    cursor.execute(query_update, {'keyword': sanitized_keyword})
+                    conn.commit() 
+                    
+                    
                     ip_address = request.client.host
                     country_code = get_country_code_for_ip(ip_address)
                     referrer = request.headers.get('referer')
                     user_agent = request.headers.get('user-agent')
                     
-                    # Log asynchronously or handle potential delay?
-                    # For simplicity, logging directly here.
+                    
+                    
                     log_click(sanitized_keyword, ip_address, country_code, referrer, user_agent)
 
                 except Error as e:
                     print(f"DB Error incrementing click for {sanitized_keyword}: {e}")
-                    conn.rollback() # Rollback click increment if logging fails?
+                    conn.rollback() 
                 except Exception as e_log:
-                     # Catch potential GeoIP/logging errors without stopping the redirect
+                     
                      print(f"Error during click logging/GeoIP lookup for {sanitized_keyword}: {e_log}")
 
         except Error as e:
             print(f"DB Error fetching URL for {sanitized_keyword}: {e}")
-            # Don't redirect if DB error occurs?
+            
             raise HTTPException(status_code=503, detail="Database error")
         finally:
             if cursor: cursor.close()
             if conn.is_connected(): conn.close()
     else:
-        # DB connection failed
+        
         raise HTTPException(status_code=503, detail="Database connection failed")
 
     if target_url:
-        # Perform the redirect
-        return RedirectResponse(url=target_url, status_code=301) # Use 301 for permanent redirect? Or 302? YOURLS uses 301/302 based on config.
+        
+        return RedirectResponse(url=target_url, status_code=301) 
     else:
-        # Keyword not found in DB
+        
         raise HTTPException(status_code=404, detail="Short URL not found")
 
 
@@ -1570,7 +1575,7 @@ def get_filtered_links_core(filter_type: str = 'top', limit: int = 10, start: in
     return result
 
 
-# --- Nonce Helper Functions ---
+
 
 NONCE_SESSION_KEY = "_nonces"
 
@@ -1579,17 +1584,17 @@ def create_nonce(request: Request, action: str) -> str:
     if NONCE_SESSION_KEY not in request.session:
         request.session[NONCE_SESSION_KEY] = {}
     
-    # Limit the number of nonces stored to prevent session bloat
-    if len(request.session[NONCE_SESSION_KEY]) > 50: # Arbitrary limit
-         # Remove oldest nonces (simple approach, might need refinement)
+    
+    if len(request.session[NONCE_SESSION_KEY]) > 50: 
+         
         keys_to_remove = list(request.session[NONCE_SESSION_KEY].keys())[:20]
         for key in keys_to_remove:
              del request.session[NONCE_SESSION_KEY][key]
 
     nonce = secrets.token_hex(16)
-    # Store nonce with the action it's intended for
+    
     request.session[NONCE_SESSION_KEY][nonce] = action 
-    request.session.modified = True # Ensure session is saved
+    request.session.modified = True 
     return nonce
 
 def verify_nonce(request: Request, nonce: Optional[str], action: str) -> bool:
@@ -1600,20 +1605,20 @@ def verify_nonce(request: Request, nonce: Optional[str], action: str) -> bool:
     nonces = request.session.get(NONCE_SESSION_KEY, {})
     
     if nonce in nonces and nonces[nonce] == action:
-        # Nonce is valid for this action, remove it after use
+        
         del request.session[NONCE_SESSION_KEY][nonce]
         request.session.modified = True
         return True
         
-    # If nonce exists but for a different action, or doesn't exist, it's invalid
-    # Log potential CSRF attempt?
+    
+    
     print(f"Nonce verification failed for action '{action}'. Received nonce: {nonce}")
     return False
 
-# Add nonce functions to template globals
+
 templates.env.globals['create_nonce'] = create_nonce
 
-# --- AJAX Handler for Admin Interface ---
+
 
 @app.api_route("/admin-ajax", methods=["GET", "POST"], name="admin_ajax_handler", response_class=JSONResponse)
 async def admin_ajax_handler(request: Request, user_id: str = Depends(get_current_user_or_redirect)):
@@ -1621,7 +1626,7 @@ async def admin_ajax_handler(request: Request, user_id: str = Depends(get_curren
     form_data = await request.form()
     if request.method == "POST":
          params = {**request.query_params, **form_data}
-    else: # GET
+    else: 
          params = {**request.query_params}
          
     action = params.get('action')
@@ -1629,7 +1634,7 @@ async def admin_ajax_handler(request: Request, user_id: str = Depends(get_curren
     response_data = {}
     status_code = 200
 
-    # --- Action: Add Link ---
+    
     if action == 'add':
         if not verify_nonce(request, nonce, 'add'):
              response_data = {"status": "fail", "message": "Security check failed (nonce)."}
@@ -1637,54 +1642,54 @@ async def admin_ajax_handler(request: Request, user_id: str = Depends(get_curren
         else:
             source_url = params.get('url', '').strip()
             source_keyword = params.get('keyword', '').strip() or None
-            # Title is not passed by default 'add' ajax call in insert.js
-            # source_title = params.get('title', '').strip() or None 
+            
+            
             
             if not source_url or not source_url.lower().startswith(('http://', 'https://')):
                  response_data = {"status": "fail", "message": "Missing or invalid URL parameter."}
                  status_code = 400
             else:
-                add_result = await add_new_link_core(request, source_url, source_keyword, None) # Pass None for title initially
+                add_result = await add_new_link_core(request, source_url, source_keyword, None) 
                 
-                response_data = add_result.copy() # Start with core result
+                response_data = add_result.copy() 
                 
-                # If successful, generate HTML for the new row
+                
                 if add_result.get('status') == 'success' and 'url' in add_result:
                     try:
-                        # Prepare context for the row template
-                        link_data = add_result['url']
-                        row_id = params.get('rowid', 'new') # Get rowid passed from JS if available
                         
-                        # Create nonces needed for the new row's buttons
+                        link_data = add_result['url']
+                        row_id = params.get('rowid', 'new') 
+                        
+                        
                         edit_nonce = create_nonce(request, f'edit-display_{link_data["keyword"]}')
                         delete_nonce = create_nonce(request, f'delete_{link_data["keyword"]}')
                         
                         context = {
                             "request": request,
                             "link": link_data,
-                            "id": row_id, # Use JS provided id or a placeholder
+                            "id": row_id, 
                             "edit_nonce": edit_nonce,
                             "delete_nonce": delete_nonce,
-                            "yourls_site": str(request.base_url).rstrip('/') # Needed for shorturl construction maybe?
+                            "yourls_site": str(request.base_url).rstrip('/') 
                         }
                         html_row = templates.get_template("partials/table_row.html").render(context)
                         response_data['html'] = html_row
                     except Exception as e:
                         print(f"Error rendering table_row.html: {e}")
-                        # Don't send partial/broken HTML
+                        
                         response_data = {"status": "fail", "message": "Error generating table row HTML."}
                         status_code = 500
-                        if 'html' in response_data: del response_data['html'] # Ensure no html key if failed
+                        if 'html' in response_data: del response_data['html'] 
 
-                # Set correct status code from core function result
+                
                 status_code = add_result.get('statusCode', status_code) 
-                if 'statusCode' in response_data: del response_data['statusCode'] # Remove internal statusCode key
+                if 'statusCode' in response_data: del response_data['statusCode'] 
 
 
-    # --- Action: Edit Link Display ---
+    
     elif action == 'edit_display':
         keyword = params.get('keyword')
-        link_id = params.get('id') # The row ID (e.g., '1', '2')
+        link_id = params.get('id') 
         
         if not keyword or not link_id:
              response_data = {"status": "fail", "message": "Missing keyword or id for edit display."}
@@ -1710,7 +1715,7 @@ async def admin_ajax_handler(request: Request, user_id: str = Depends(get_curren
 
             if link_data:
                 try:
-                    # Create nonce needed for the edit form save button
+                    
                     save_nonce = create_nonce(request, f'edit-save_{link_data["keyword"]}')
                     
                     context = {
@@ -1722,8 +1727,8 @@ async def admin_ajax_handler(request: Request, user_id: str = Depends(get_curren
                     html_form = templates.get_template("partials/edit_form.html").render(context)
                     response_data['html'] = html_form
                     status_code = 200
-                    # Note: Original YOURLS doesn't seem to wrap this in a status/message dict, just returns HTML
-                    # However, insert.js expects data.html, so returning {'html': ...} is needed.
+                    
+                    
                 except Exception as e:
                      print(f"Error rendering edit_form.html: {e}")
                      response_data = {"status": "fail", "message": "Error generating edit form HTML."}
@@ -1732,12 +1737,12 @@ async def admin_ajax_handler(request: Request, user_id: str = Depends(get_curren
                 response_data = {"status": "fail", "message": "Link not found."}
                 status_code = 404
 
-    # --- Action: Edit Link Save ---
+    
     elif action == 'edit_save':
         original_keyword = params.get('keyword')
         new_keyword = params.get('newkeyword')
         new_url = params.get('url')
-        new_title = params.get('title', '') # Title might be empty
+        new_title = params.get('title', '') 
         link_id = params.get('id')
 
         if not original_keyword or not new_keyword or not new_url or not link_id:
@@ -1747,16 +1752,16 @@ async def admin_ajax_handler(request: Request, user_id: str = Depends(get_curren
              response_data = {"status": "fail", "message": "Security check failed (nonce)."}
              status_code = 403
         else:
-             # Basic sanitization (use stricter if needed)
+             
              sanitized_new_keyword = sanitize_keyword(new_keyword, restrict_to_shorturl_charset=True)
-             # TODO: Add URL validation/sanitization if needed (yourls_sanitize_url?)
-             sanitized_url = new_url # Placeholder
-             sanitized_title = new_title.strip()[:255] # Basic trim and length limit
+             
+             sanitized_url = new_url 
+             sanitized_title = new_title.strip()[:255] 
 
              if not sanitized_new_keyword:
                   response_data = {"status": "fail", "message": "Invalid new keyword format."}
                   status_code = 400
-             # Check if new keyword is different and if it's available
+             
              elif sanitized_new_keyword != original_keyword and (keyword_is_reserved(sanitized_new_keyword) or keyword_is_taken(sanitized_new_keyword)):
                   response_data = {"status": "fail", "message": f"Keyword '{sanitized_new_keyword}' is reserved or already taken."}
                   status_code = 400
@@ -1780,30 +1785,30 @@ async def admin_ajax_handler(request: Request, user_id: str = Depends(get_curren
                          updated = cursor.rowcount > 0
                      except Error as e:
                          print(f"DB Error updating link: {e}")
-                         conn.rollback() # Rollback on error
+                         conn.rollback() 
                      finally:
                          if cursor: cursor.close()
                          if conn.is_connected(): conn.close()
                  
                  if updated:
-                      # Fetch the updated link data to return
-                      updated_link_data = get_url_stats_core(sanitized_new_keyword) # Reuse stats core to get formatted data
+                      
+                      updated_link_data = get_url_stats_core(sanitized_new_keyword) 
                       if updated_link_data:
                            response_data = {
                                "status": "success",
                                "message": "Link updated successfully.",
-                               "url": updated_link_data # Return updated link details
+                               "url": updated_link_data 
                            }
                            status_code = 200
                       else: 
-                           # Should not happen if update was successful, but handle anyway
+                           
                             response_data = {"status": "fail", "message": "Link updated, but failed to retrieve new details."}
                             status_code = 500
                  else:
                       response_data = {"status": "fail", "message": "Database error during update or keyword not found."}
                       status_code = 500
                       
-    # --- Action: Delete Link ---
+    
     elif action == 'delete':
         keyword = params.get('keyword')
         link_id = params.get('id')
@@ -1821,7 +1826,7 @@ async def admin_ajax_handler(request: Request, user_id: str = Depends(get_curren
                  cursor = None
                  try:
                      cursor = conn.cursor()
-                     # TODO: Delete associated logs? YOURLS core doesn't by default via this action.
+                     
                      query = "DELETE FROM yourls_url WHERE keyword = %(keyword)s"
                      cursor.execute(query, {'keyword': keyword})
                      conn.commit()
@@ -1834,14 +1839,14 @@ async def admin_ajax_handler(request: Request, user_id: str = Depends(get_curren
                      if conn.is_connected(): conn.close()
                      
              if deleted:
-                 response_data = {"success": 1} # Original JS expects 'success: 1'
+                 response_data = {"success": 1} 
                  status_code = 200
              else:
-                 # Original JS doesn't explicitly handle failure here, but we can send a message
-                 response_data = {"success": 0, "message": "Link not found or DB error."} 
-                 status_code = 404 # Or 500 depending on assumed cause
                  
-    # --- Unknown Action ---
+                 response_data = {"success": 0, "message": "Link not found or DB error."} 
+                 status_code = 404 
+                 
+    
     else:
         response_data = {"status": "fail", "message": "Unknown AJAX action requested."}
         status_code = 400
