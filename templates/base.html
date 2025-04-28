@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}YOURLS Admin{% endblock %}</title>
+    {# Add links to CSS files here #}
+    <link rel="stylesheet" href="/css/style.css"> {# Example #}
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+    <header>
+        <h1>YOURLS Admin Interface</h1>
+        {# Add navigation menu here #}
+    </header>
+
+    <main>
+        {% block content %}
+        {# Page specific content will go here #}
+        {% endblock %}
+    </main>
+
+    <footer>
+        <p>Powered by YOURLS & Jinja2</p>
+    </footer>
+
+    {# Add links to JS files here #}
+    <script src="/js/script.js"></script> {# Example #}
+    {% block scripts_extra %}{% endblock %}
+</body>
+</html> 
