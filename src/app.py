@@ -130,15 +130,15 @@ templates.env.globals['sort_url'] = generate_sort_url
 
 
 
-# Choose charset based on YOURLS_URL_CONVERT (default to 36 if not defined/invalid)
-# You might want to fetch YOURLS_URL_CONVERT from os.getenv or a config file
-YOURLS_URL_CONVERT_SETTING = 36 # Default to base36
+
+
+YOURLS_URL_CONVERT_SETTING = 36 
 
 if YOURLS_URL_CONVERT_SETTING == 62:
     SHORTURL_CHARSET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-elif YOURLS_URL_CONVERT_SETTING == 64: # Note: Base64 in YOURLS context might mean base62 + extra chars? Check PHP source if needed. Assuming 62 for now.
+elif YOURLS_URL_CONVERT_SETTING == 64: 
     SHORTURL_CHARSET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-else: # Default base36
+else: 
     SHORTURL_CHARSET = '0123456789abcdefghijklmnopqrstuvwxyz'
 
 BASE = len(SHORTURL_CHARSET)
@@ -150,11 +150,11 @@ DEFAULT_SORT_ORDER = 'DESC'
 DEFAULT_PER_PAGE = 15
 API_KEY_STORE = os.getenv('API_SECRET_KEY')
 
-# Basic list of reserved keywords - expand as needed based on YOURLS source/config
+
 RESERVED_KEYWORDS = {
     'css', 'js', 'images', 'api', 'stats', 'edit', 'delete', 'login', 'logout',
-    'admin', 'plugins', 'tools', 'info', 'yourls', # Common YOURLS paths/terms
-    # Add any other keywords that might conflict with routes or functionality
+    'admin', 'plugins', 'tools', 'info', 'yourls', 
+    
 }
 
 def int2string(integer: int) -> str:
@@ -182,7 +182,7 @@ def keyword_is_taken(keyword: str, conn = None) -> bool:
         conn = get_db_connection()
         if not conn:
             print("Error: DB connection failed in keyword_is_taken")
-            return True # Fail safe: assume taken if DB fails
+            return True 
         close_conn = True
 
     cursor = None
@@ -194,7 +194,7 @@ def keyword_is_taken(keyword: str, conn = None) -> bool:
         is_taken = cursor.fetchone() is not None
     except Error as e:
         print(f"DB Error checking keyword {keyword}: {e}")
-        is_taken = True # Fail safe
+        is_taken = True 
     finally:
         if cursor: cursor.close()
         if close_conn and conn and conn.is_connected(): conn.close()
@@ -223,26 +223,26 @@ def sanitize_keyword(keyword: str | None, restrict_to_shorturl_charset: bool = F
         return None
 
     if restrict_to_shorturl_charset:
-        # Mode used when adding/editing: remove everything NOT in the allowed charset
-        # Note: Does NOT include hyphen unless it's part of SHORTURL_CHARSET
+        
+        
         pattern = re.escape(SHORTURL_CHARSET)
         sanitized = re.sub(f'[^{pattern}]', '', keyword)
-        # Limit length as in original YOURLS
+        
         sanitized = sanitized[:199]
     else:
-        # Mode used for display/lookup: less strict sanitization
-        # Placeholder: Implement yourls_sanitize_url logic if needed.
-        # For now, apply minimal sanitization or return as is for lookup.
-        # Basic example: remove control characters, trim whitespace
+        
+        
+        
+        
         sanitized = re.sub(r'[\x00-\x1f\x7f]', '', keyword).strip()
-        # If implementing fully, would need to handle protocols, etc.
-        # like yourls_esc_url in PHP.
+        
+        
         
     return sanitized if sanitized else None
 
-# Updated keyword generation - random but checks availability
-MAX_KEYWORD_ATTEMPTS = 10 # Prevent infinite loops if space is full
-INITIAL_KEYWORD_LENGTH = 4 # Start with shorter keywords
+
+MAX_KEYWORD_ATTEMPTS = 10 
+INITIAL_KEYWORD_LENGTH = 4 
 
 def generate_next_keyword(conn = None) -> str | None:
     """Generates a unique, random keyword, checking for availability."""
@@ -251,19 +251,19 @@ def generate_next_keyword(conn = None) -> str | None:
         conn = get_db_connection()
         if not conn:
             print("Error: DB connection failed for keyword generation")
-            return None # Cannot generate without DB access
+            return None 
         close_conn = True
 
     try:
         current_length = INITIAL_KEYWORD_LENGTH
-        for attempt in range(MAX_KEYWORD_ATTEMPTS * current_length): # Allow more attempts for longer keys
-            # Generate a random string using the allowed charset
+        for attempt in range(MAX_KEYWORD_ATTEMPTS * current_length): 
+            
             keyword = ''.join(random.choices(SHORTURL_CHARSET, k=current_length))
 
             if keyword_is_free(keyword, conn):
                 return keyword
 
-            # Increase length occasionally if attempts fail for current length
+            
             if (attempt + 1) % MAX_KEYWORD_ATTEMPTS == 0:
                 current_length += 1
                 print(f"Increasing generated keyword length to {current_length}")
@@ -275,7 +275,7 @@ def generate_next_keyword(conn = None) -> str | None:
         if close_conn and conn and conn.is_connected(): conn.close()
 
     print(f"Error: Could not find a free keyword after multiple attempts.")
-    return None # Failed to find a free keyword
+    return None 
 
 
 def get_admin_index_data(query_params: dict) -> Dict[str, Any]:
@@ -513,39 +513,39 @@ async def admin_index_get(request: Request, user_id: str = Depends(get_current_u
 
 @app.route("/", methods=["GET", "POST"], name="admin_index_post")
 async def add_link_endpoint(request: Request, 
-                        # Form parameters (for POST)
+                        
                         url: Optional[str] = Form(None), 
                         keyword: Optional[str] = Form(None), 
                         title: Optional[str] = Form(None),
-                        # Query parameters (for GET/Bookmarklets)
-                        up: Optional[str] = None, # URL protocol from bookmarklet
-                        us: Optional[str] = None, # URL slashes from bookmarklet
-                        ur: Optional[str] = None, # URL rest from bookmarklet
-                        t: Optional[str] = None, # Title from bookmarklet
-                        s: Optional[str] = None, # Selection from bookmarklet (becomes title)
-                        k: Optional[str] = None, # Keyword from bookmarklet
-                        jsonp: Optional[str] = None, # JSONP callback name
-                        # Dependency
+                        
+                        up: Optional[str] = None, 
+                        us: Optional[str] = None, 
+                        ur: Optional[str] = None, 
+                        t: Optional[str] = None, 
+                        s: Optional[str] = None, 
+                        k: Optional[str] = None, 
+                        jsonp: Optional[str] = None, 
+                        
                         user_id: str = Depends(get_current_user_or_redirect)): 
 
     is_bookmarklet = request.method == "GET" and ur is not None
-    jsonp_callback = jsonp # Rename for clarity
+    jsonp_callback = jsonp 
 
-    # --- Determine Source of Data (Form POST or Bookmarklet GET) ---
+    
     if is_bookmarklet:
-        # Decode parameters carefully
+        
         try:
-            protocol = unquote_plus(up) if up else 'http:' # Default protocol?
+            protocol = unquote_plus(up) if up else 'http:' 
             slashes = unquote_plus(us) if us else '//'
             rest_of_url = unquote_plus(ur)
             source_url = f"{protocol}{slashes}{rest_of_url}"
             source_keyword = unquote_plus(k) if k else None
-            # Prioritize selection (s) over page title (t) for the link title
+            
             source_title = unquote_plus(s) if s else (unquote_plus(t) if t else "")
             source_title = source_title.strip()
         except Exception as e:
             print(f"Error decoding bookmarklet params: {e}")
-            # Handle error: maybe redirect or return error JSONP
+            
             if jsonp:
                 error_response = {"status": "fail", "message": "Error decoding parameters"}
                 return PlainTextResponse(f"{jsonp}({jsonable_encoder(error_response)});", media_type="application/javascript")
@@ -553,15 +553,15 @@ async def add_link_endpoint(request: Request,
                 add_notification(request, "Error processing bookmarklet request.", "error")
                 return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
     elif request.method == "POST":
-        # Data from form
+        
         source_url = url.strip() if url else None
         source_keyword = keyword.strip() if keyword else None
         source_title = title.strip() if title else ""
     else:
-        # Should not happen with methods=["GET", "POST"]
+        
         raise HTTPException(status_code=405, detail="Method Not Allowed")
 
-    # --- Validation ---
+    
     if not source_url:
         message = "URL is required."
         if jsonp:
@@ -580,16 +580,16 @@ async def add_link_endpoint(request: Request,
             add_notification(request, message, 'error')
             return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
-    # Call the core function
+    
     result_data = await add_new_link_core(request, source_url, source_keyword, source_title)
 
-    # --- Return Response based on request type ---
+    
     if jsonp_callback:
-        # JSONP response for Instant Bookmarklets
+        
         js_body = f"{jsonp_callback}({jsonable_encoder(result_data)});"
         return PlainTextResponse(js_body, media_type="application/javascript")
     else:
-        # Standard Bookmarklet or Form POST: Redirect to admin index with notification
+        
         notification_type = 'success' if result_data.get("status") == "success" else 'error'
         add_notification(request, result_data.get("message", "Operation finished."), notification_type)
         return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
@@ -629,11 +629,11 @@ async def delete_link_post(request: Request, keyword: str, user_id: str = Depend
 
 @app.get("/stats/{keyword}", response_class=HTMLResponse, name="link_stats")
 async def link_stats_get(request: Request, keyword: str, user_id: str = Depends(get_current_user_or_redirect)): 
-    # Sanitize keyword less strictly for lookup/display
-    sanitized_keyword = sanitize_keyword(keyword) # restrict_to_shorturl_charset=False (default)
+    
+    sanitized_keyword = sanitize_keyword(keyword) 
     if not sanitized_keyword: 
-        print(f"Invalid keyword format for stats lookup: {keyword}") # Log original
-        # Handle error appropriately, maybe 404 or redirect
+        print(f"Invalid keyword format for stats lookup: {keyword}") 
+        
         raise HTTPException(status_code=404, detail="Invalid keyword format")
 
     conn = get_db_connection()
@@ -665,29 +665,29 @@ async def link_stats_get(request: Request, keyword: str, user_id: str = Depends(
         if cursor: cursor.close()
         if conn and conn.is_connected(): conn.close()
 
-    # Construct absolute short URL in Python
+    
     try:
         short_url_path = str(request.url_for('redirect_link', keyword=link_data['keyword']))
         base_url = str(request.base_url)
-        absolute_short_url = urljoin(base_url, short_url_path.lstrip('/')) # Use urljoin for robust joining
-    except Exception as e: # Catch potential errors during URL generation
+        absolute_short_url = urljoin(base_url, short_url_path.lstrip('/')) 
+    except Exception as e: 
         print(f"Error generating absolute URL for stats: {e}")
-        absolute_short_url = "#error" # Fallback URL
+        absolute_short_url = "
 
-    # Prepare context for the template
+    
     context = {
         "request": request, 
         "link": link_data, 
         "logs": click_logs, 
         "current_user_id": user_id,
-        "absolute_short_url": absolute_short_url # Pass the generated URL
+        "absolute_short_url": absolute_short_url 
     }
     return templates.TemplateResponse('stats.html', context)
 
 @app.get("/edit/{keyword}", response_class=HTMLResponse, name="edit_link")
 async def edit_link_get(request: Request, keyword: str, user_id: str = Depends(get_current_user_or_redirect)): 
-    # Sanitize keyword less strictly for lookup/display
-    original_keyword_lookup = sanitize_keyword(keyword) # restrict_to_shorturl_charset=False (default)
+    
+    original_keyword_lookup = sanitize_keyword(keyword) 
     if not original_keyword_lookup: 
         print(f"Invalid keyword format for edit lookup: {keyword}")
         raise HTTPException(status_code=404, detail="Invalid keyword format")
@@ -709,7 +709,7 @@ async def edit_link_get(request: Request, keyword: str, user_id: str = Depends(g
             print(f'Link "{original_keyword_lookup}" not found for editing.')
             return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
         
-        # Pass the *original* unsanitized keyword to the template for display/path generation
+        
         context = {"request": request, "link": link_data, "original_keyword": keyword, "current_user_id": user_id}
         return templates.TemplateResponse('edit_link.html', context)
         
@@ -722,13 +722,13 @@ async def edit_link_get(request: Request, keyword: str, user_id: str = Depends(g
 
 @app.post("/edit/{keyword}", response_class=RedirectResponse, name="edit_link_post")
 async def edit_link_post(request: Request, 
-                         keyword: str, # Original keyword from path
+                         keyword: str, 
                          url: str = Form(...), 
-                         new_keyword: str = Form(..., alias="keyword"), # New keyword from form
+                         new_keyword: str = Form(..., alias="keyword"), 
                          title: Optional[str] = Form(None),
-                         user_id: str = Depends(get_current_user_or_redirect)): # Protect
-    # Sanitize original keyword from path less strictly for potential use in redirect URL
-    original_keyword_lookup = sanitize_keyword(keyword) # False default
+                         user_id: str = Depends(get_current_user_or_redirect)): 
+    
+    original_keyword_lookup = sanitize_keyword(keyword) 
     
     new_url_strip = url.strip()
     new_keyword_strip = new_keyword.strip()
@@ -743,12 +743,12 @@ async def edit_link_post(request: Request,
         edit_url = request.url_for('edit_link', keyword=original_keyword_lookup or keyword)
         return RedirectResponse(url=edit_url, status_code=status.HTTP_302_FOUND)
 
-    # Sanitize the *new* keyword strictly for DB update
+    
     sanitized_new_keyword = sanitize_keyword(new_keyword_strip, restrict_to_shorturl_charset=True)
     if not sanitized_new_keyword:
         print(f'Error: The new keyword "{new_keyword_strip}" contains invalid characters or is empty after sanitization.')
-        # Redirect back using the less-sanitized original keyword from path
-        edit_url = request.url_for('edit_link', keyword=original_keyword_lookup or keyword) # Fallback to raw keyword if sanitization fails
+        
+        edit_url = request.url_for('edit_link', keyword=original_keyword_lookup or keyword) 
         add_notification(request, 'Error: The new keyword contains invalid characters or is empty after sanitization.', 'error')
         return RedirectResponse(url=edit_url, status_code=status.HTTP_302_FOUND)
 
@@ -766,7 +766,7 @@ async def edit_link_post(request: Request,
             'new_keyword': sanitized_new_keyword, 
             'new_url': new_url_strip, 
             'new_title': new_title_strip if new_title_strip else None, 
-            'original_keyword': original_keyword_lookup # Use less-sanitized original for lookup
+            'original_keyword': original_keyword_lookup 
         }
         cursor.execute(update_query, data)
         
@@ -791,7 +791,7 @@ async def edit_link_post(request: Request,
         if conn and conn.is_connected(): conn.close()
 
     if redirect_to_edit:
-        # Use less-sanitized original for redirect URL
+        
         edit_url = request.url_for('edit_link', keyword=original_keyword_lookup or keyword)
         return RedirectResponse(url=edit_url, status_code=status.HTTP_302_FOUND)
     else:
@@ -801,13 +801,13 @@ async def edit_link_post(request: Request,
 
 def format_api_response(data: Dict[str, Any], req_format: str = 'json') -> Tuple[Any, int, Dict[str, str]]:
     """Formats the API response data into JSON, XML (basic), or Simple Text."""
-    simple_output = data.pop('simple', None) # Extract simple output if present
+    simple_output = data.pop('simple', None) 
     status_code = data.pop('statusCode', 200)
     headers = {}
-    content = data # Default to JSON dictionary
+    content = data 
 
     if req_format == 'xml':
-        # Basic XML formatting - consider using a library for complex cases
+        
         xml_parts = [f"<{key}>{value}</{key}>" for key, value in data.items() if value is not None]
         content = f"<?xml version=\"1.0\" encoding=\"UTF-8\"?><result>{''.join(xml_parts)}</result>"
         headers['Content-Type'] = 'application/xml'
@@ -815,53 +815,53 @@ def format_api_response(data: Dict[str, Any], req_format: str = 'json') -> Tuple
         content = simple_output if simple_output is not None else data.get('message', 'Error')
         headers['Content-Type'] = 'text/plain'
         if data.get('status') != 'success' and status_code == 200:
-            status_code = 400 # Default error code for simple failure
-    else: # Default to JSON
+            status_code = 400 
+    else: 
         headers['Content-Type'] = 'application/json'
-        content = data # Already a dictionary, FastAPI handles JSON encoding
+        content = data 
         
     return content, status_code, headers
 
-@app.api_route("/api", methods=["GET", "POST"], name="api_handler", response_model=None) # Use response_model=None for flexible responses 
+@app.api_route("/api", methods=["GET", "POST"], name="api_handler", response_model=None) 
 async def api_handler_route(request: Request):
     params = {}
     if request.method == "POST":
         try:
-            # Try parsing JSON body first
+            
             if request.headers.get("content-type") == "application/json":
                 params = await request.json()
             else:
-                 # Fallback to form data
+                 
                 params = {**request.query_params, **await request.form()}
-        except Exception: # Handle cases where body is not valid JSON or form
+        except Exception: 
              params = {**request.query_params, **await request.form()} if await request.body() else {**request.query_params}
-    else: # GET
+    else: 
         params = {**request.query_params}
 
-    # --- Authentication --- 
-    api_key_param = params.get('apikey') # Allow key via GET/POST/JSON
-    # TODO: Implement signature validation if needed
-    # signature = params.get('signature')
-    # timestamp = params.get('timestamp')
+    
+    api_key_param = params.get('apikey') 
+    
+    
+    
     
     authenticated = False
     if API_KEY_STORE:
         if api_key_param and api_key_param == API_KEY_STORE:
             authenticated = True
-        # Add signature check logic here if implementing signatures
-        # elif signature and timestamp:
-        #     # Calculate expected signature based on params + timestamp + secret
-        #     # Compare signatures
-        #     pass 
         
-    # Allow access without API key if API_KEY_STORE is not set in .env (optional)
-    # elif not API_KEY_STORE:
-    #     authenticated = True
+        
+        
+        
+        
+        
+    
+    
+    
         
     req_format = params.get('format', 'json').lower()
     jsonp_callback = params.get('callback') or params.get('jsonp')
     if jsonp_callback:
-        req_format = 'jsonp' # Override format if jsonp/callback is present
+        req_format = 'jsonp' 
 
     if not authenticated:
         error_response = {"status": "fail", "code": "error:auth", "message": "Invalid or missing authentication credentials", "statusCode": 403}
@@ -874,7 +874,7 @@ async def api_handler_route(request: Request):
         else:
              return JSONResponse(content=content, status_code=status_code, headers=headers)
 
-    # --- Action Handling --- 
+    
     action = params.get('action')
     response_data = {}
 
@@ -883,12 +883,12 @@ async def api_handler_route(request: Request):
         source_keyword = params.get('keyword', '').strip() or None
         source_title = params.get('title', '').strip() or None
         
-        # Basic validation needed here before calling core
+        
         if not source_url or not source_url.lower().startswith(('http://', 'https://')):
              response_data = {"status": "fail", "message": "Missing or invalid URL parameter.", "statusCode": 400}
         else:
             response_data = await add_new_link_core(request, source_url, source_keyword, source_title)
-            # Add 'simple' output for this action
+            
             if response_data.get('status') == 'success':
                  response_data['simple'] = response_data.get('shorturl')
             else:
@@ -896,7 +896,7 @@ async def api_handler_route(request: Request):
 
     elif action == 'expand':
         shorturl_param = params.get('shorturl', '').strip()
-        keyword = sanitize_keyword(shorturl_param.split('/')[-1]) # Extract keyword
+        keyword = sanitize_keyword(shorturl_param.split('/')[-1]) 
         
         if not keyword:
             response_data = {"status": "fail", "message": "Missing or invalid shorturl parameter.", "statusCode": 400}
@@ -936,37 +936,37 @@ async def api_handler_route(request: Request):
                     if conn and conn.is_connected(): conn.close()
                     
     elif action == 'version':
-        # Replace with actual version if available
+        
         app_version = "1.0-fastapi" 
         response_data = {'version': app_version, 'simple': app_version, 'statusCode': 200}
-        # Add DB version if needed and available
-        # db_version = get_option('db_version', 'unknown')
-        # response_data['db_version'] = db_version
+        
+        
+        
 
     elif action == 'db-stats':
         stats = get_db_stats_core()
         response_data = {
-            'db_stats': stats, # Original API nests it
+            'db_stats': stats, 
             'message': 'success',
-            'simple': 'DB Stats: Links: {:,}, Clicks: {:,}'.format(stats['total_links'], stats['total_clicks']), # Custom simple format
+            'simple': 'DB Stats: Links: {:,}, Clicks: {:,}'.format(stats['total_links'], stats['total_clicks']), 
             'statusCode': 200
         }
 
     elif action == 'url-stats':
         shorturl_param = params.get('shorturl', '').strip()
-        keyword = sanitize_keyword(shorturl_param.split('/')[-1]) # Extract keyword
+        keyword = sanitize_keyword(shorturl_param.split('/')[-1]) 
 
         if not keyword:
             response_data = {"status": "fail", "message": "Missing or invalid shorturl parameter.", "statusCode": 400}
         else:
             link_stats = get_url_stats_core(keyword)
             if link_stats:
-                # Construct short URL link for the response
+                
                 link_short_url = str(request.base_url).rstrip('/') + '/' + link_stats['keyword']
                 response_data = {
                     'statusCode': 200,
                     'message': 'success',
-                    'link': { # Original API nests it
+                    'link': { 
                         'shorturl': link_short_url,
                         'url': link_stats['url'],
                         'title': link_stats['title'],
@@ -980,7 +980,7 @@ async def api_handler_route(request: Request):
                     'statusCode': 404,
                     'message': 'Error: short URL not found'
                 }
-            # Define simple output for url-stats (e.g., click count)
+            
             response_data['simple'] = f"Clicks: {link_stats['clicks']}" if link_stats else "not found"
 
     elif action == 'stats':
@@ -993,15 +993,15 @@ async def api_handler_route(request: Request):
         response_data = {
             'statusCode': 200,
             'message': 'success',
-            'links': stats_result.get('links', {}), # Nested under 'links'
-            'stats': stats_result.get('stats', {}), # Nested under 'stats'
-            'simple': 'Stats requires JSON or XML format' # Original API simple response
+            'links': stats_result.get('links', {}), 
+            'stats': stats_result.get('stats', {}), 
+            'simple': 'Stats requires JSON or XML format' 
         }
 
     else:
         response_data = {"status": "fail", "code": "error:action", "message": "Unknown action", "statusCode": 400}
 
-    # --- Format and Return Response --- 
+    
     final_content, final_status_code, final_headers = format_api_response(response_data.copy(), req_format if req_format != 'jsonp' else 'json')
 
     if jsonp_callback:
@@ -1009,14 +1009,14 @@ async def api_handler_route(request: Request):
         return PlainTextResponse(js_body, status_code=final_status_code, media_type="application/javascript", headers=final_headers)
     elif req_format == 'xml' or req_format == 'simple':
         return PlainTextResponse(final_content, status_code=final_status_code, headers=final_headers)
-    else: # JSON
+    else: 
         return JSONResponse(content=final_content, status_code=final_status_code, headers=final_headers)
 
 
 @app.get("/{keyword}", response_class=RedirectResponse, name="redirect_link")
 async def redirect_link_get(request: Request, keyword: str):
-    # Sanitize keyword less strictly for lookup
-    sanitized_keyword = sanitize_keyword(keyword) # restrict_to_shorturl_charset=False (default)
+    
+    sanitized_keyword = sanitize_keyword(keyword) 
     if not sanitized_keyword: 
         raise HTTPException(status_code=404, detail="Keyword not found (invalid format)")
 
@@ -1034,15 +1034,15 @@ async def redirect_link_get(request: Request, keyword: str):
         if result and result['url']:
             original_url = result['url']
             
-            # Log the click and update count
+            
             try:
                 click_time = datetime.now()
                 referrer = request.headers.get('referer', None)
-                user_agent = request.headers.get('user-agent', 'Unknown')[:255] # Limit length
+                user_agent = request.headers.get('user-agent', 'Unknown')[:255] 
                 ip_address = request.client.host
-                country_code = None # Set to None, assuming DB column allows NULL
+                country_code = None 
 
-                # Correct SQL INSERT for the log table
+                
                 log_query = """
                     INSERT INTO yourls_log 
                     (click_time, shorturl, referrer, user_agent, ip_address, country_code) 
@@ -1058,20 +1058,20 @@ async def redirect_link_get(request: Request, keyword: str):
                 }
                 cursor.execute(log_query, log_data)
 
-                # Update click count for the main URL entry
+                
                 update_query = "UPDATE yourls_url SET clicks = clicks + 1 WHERE keyword = %(keyword)s"
                 cursor.execute(update_query, {'keyword': sanitized_keyword})
-                conn.commit() # Commit both insert and update
+                conn.commit() 
             except Error as log_update_err:
-                # Log the error but don't necessarily prevent the redirect
+                
                 print(f"DB Error (Log/Update Clicks): {log_update_err}")
-                # Rollback if something went wrong with logging/updating
+                
                 if conn.in_transaction: conn.rollback()
 
-            # Proceed with the redirect even if logging failed (optional behaviour)
+            
             return RedirectResponse(url=original_url, status_code=status.HTTP_301_MOVED_PERMANENTLY)
         else:
-            # Keyword not found in the database
+            
             raise HTTPException(status_code=404, detail="Keyword not found")
 
     except Error as e:
@@ -1083,26 +1083,26 @@ async def redirect_link_get(request: Request, keyword: str):
         if conn and conn.is_connected(): conn.close()
 
 
-# --- Bookmarklet Helper ---
+
 def make_bookmarklet(js_code: str) -> str:
     """Formats JavaScript code into a javascript: URL."""
-    # Assume js_code is already somewhat clean (no comments, minimal whitespace)
-    # Wrap in (function(){...})(); and encode
+    
+    
     formatted_js = f"(function(){{{js_code.strip()}}})();"
-    # Use quote_plus for space -> + encoding, typical for bookmarklets
-    # Ensure base_url doesn't break the JS string context if inserted directly
-    encoded_js = urllib.parse.quote_plus(formatted_js, safe=":/?&=()'") # Keep some chars safe
+    
+    
+    encoded_js = urllib.parse.quote_plus(formatted_js, safe=":/?&=()'") 
     return f"javascript:{encoded_js}"
 
-# Route for the Tools page (Bookmarklets)
+
 @app.get("/tools", response_class=HTMLResponse, name="tools_get")
 async def tools_get(request: Request, user_id: str = Depends(get_current_user_or_redirect)):
     base_bookmarklet_url_raw = str(request.url_for('admin_index_post')) 
     base_bookmarklet_url = urllib.parse.urljoin(str(request.base_url), base_bookmarklet_url_raw)
-    # Escape single quotes in URL for safe insertion into JS strings
+    
     safe_base_url = base_bookmarklet_url.replace("'", "\\'") 
 
-    # Define JS templates as cleaner multi-line strings
+    
     standard_simple_js = '''
         var d=document,w=window,enc=encodeURIComponent,e=w.getSelection,k=d.getSelection,x=d.selection,
             s=(e?e():(k?k():(x?x.createRange().text:0))),s2=((s.toString()=='')?s:enc(s)),
@@ -1170,7 +1170,7 @@ async def tools_get(request: Request, user_id: str = Depends(get_current_user_or
     }
     return templates.TemplateResponse("tools.html", context)
 
-# --- Core Link Operations ---
+
 
 async def add_new_link_core(request: Request, source_url: str, source_keyword: Optional[str], source_title: Optional[str]) -> Dict[str, Any]:
     """Core logic for adding a new link. Returns a dictionary with result."""
@@ -1181,9 +1181,9 @@ async def add_new_link_core(request: Request, source_url: str, source_keyword: O
     status_code = 200
 
     try:
-        # --- Validation (moved basic validation outside before calling this) ---
-        # if not source_url or not source_url.lower().startswith(('http://', 'https://')):
-        #     raise ValueError("Invalid URL format.")
+        
+        
+        
 
         conn = get_db_connection()
         if not conn:
@@ -1201,7 +1201,7 @@ async def add_new_link_core(request: Request, source_url: str, source_keyword: O
             if not final_keyword:
                  raise Exception('Could not generate a unique keyword.')
 
-        final_title = source_title # Placeholder for potential title fetching
+        final_title = source_title 
         
         cursor = conn.cursor()
         insert_query = """
@@ -1212,12 +1212,12 @@ async def add_new_link_core(request: Request, source_url: str, source_keyword: O
             'keyword': final_keyword,
             'url': source_url,
             'title': final_title if final_title else None,
-            'ip': request.client.host if request else 'api' # Get IP from request if available
+            'ip': request.client.host if request else 'api' 
         }
         cursor.execute(insert_query, link_data)
         conn.commit()
         
-        short_url_base = str(request.base_url) if request else 'http://localhost/' # Need base URL
+        short_url_base = str(request.base_url) if request else 'http://localhost/' 
         short_url = short_url_base.rstrip('/') + '/' + final_keyword
         response_data = {
             "status": "success", "message": f'Link {final_keyword} added to database',
@@ -1238,11 +1238,11 @@ async def add_new_link_core(request: Request, source_url: str, source_keyword: O
         if cursor: cursor.close()
         if conn and conn.is_connected(): conn.close()
         
-    # Add statusCode to the response for consistency with API format
+    
     response_data['statusCode'] = status_code 
     return response_data
 
-# --- Core Stats Operations ---
+
 
 def get_db_stats_core() -> Dict[str, Any]:
     """Fetches total link count and total clicks from the database."""
@@ -1250,7 +1250,7 @@ def get_db_stats_core() -> Dict[str, Any]:
     stats = {'total_links': 0, 'total_clicks': 0}
     if not conn:
         print("Error: DB connection failed for get_db_stats_core")
-        return stats # Return default zero stats on error
+        return stats 
 
     cursor = None
     try:
@@ -1259,7 +1259,7 @@ def get_db_stats_core() -> Dict[str, Any]:
         result = cursor.fetchone()
         if result:
             stats['total_links'] = result['count'] or 0
-            # Convert potential Decimal from SUM() to int
+            
             stats['total_clicks'] = int(result['clicks_sum'] or 0) 
     except Error as e:
         print(f"DB Error getting DB stats: {e}")
@@ -1282,7 +1282,7 @@ def get_url_stats_core(keyword: str) -> Dict[str, Any]:
         query = "SELECT keyword, url, title, timestamp, ip, clicks FROM yourls_url WHERE keyword = %(keyword)s"
         cursor.execute(query, {'keyword': keyword})
         link_stats = cursor.fetchone()
-        # Convert timestamp to string format if needed, FastAPI might handle datetime directly
+        
         if link_stats and isinstance(link_stats.get('timestamp'), datetime):
              link_stats['timestamp'] = link_stats['timestamp'].isoformat()
             
@@ -1302,9 +1302,9 @@ def get_filtered_links_core(filter_type: str = 'top', limit: int = 10, start: in
         return result
 
     valid_filters = {'top': 'clicks DESC', 'bottom': 'clicks ASC', 'last': 'timestamp DESC', 'rand': 'RAND()'}
-    order_by = valid_filters.get(filter_type.lower(), valid_filters['top']) # Default to top
+    order_by = valid_filters.get(filter_type.lower(), valid_filters['top']) 
 
-    # Sanitize limit and start
+    
     try:
         limit = int(limit)
         start = int(start)
@@ -1326,13 +1326,13 @@ def get_filtered_links_core(filter_type: str = 'top', limit: int = 10, start: in
         cursor.execute(query, {'limit': limit, 'offset': start})
         links = cursor.fetchall()
         
-        # Convert timestamps for JSON serialization if needed
+        
         for link in links:
             if isinstance(link.get('timestamp'), datetime):
                 link['timestamp'] = link['timestamp'].isoformat()
 
         result["links"] = {
-            f"link_{i}": link for i, link in enumerate(links) # Structure like original API: link_0, link_1 ...
+            f"link_{i}": link for i, link in enumerate(links) 
         }
         result["stats"]["count"] = len(links)
 

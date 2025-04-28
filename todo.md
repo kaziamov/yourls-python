@@ -4,13 +4,19 @@
 
 *These tasks likely require referencing the original PHP code for accurate implementation, compatibility, or understanding specific logic/formats.*
 
-- [ ] **"Tools" Page:** Create the `/tools` route and `tools.html` template, replicating the bookmarklet generator and potentially other tools. (Requires analysis of `tools.php` for bookmarklet code generation). UPD: Основная функциональность страницы /tools в части генерации и обработки стандартных/мгновенных/простых/пользовательских букмарклетов реализована. Социальные букмарклеты требуют доработки
-- [ ] **API Implementation:** Implement the YOURLS API endpoints in Python. (Requires detailed analysis of `yourls-api.php` for parameters, formats, auth).
-- [ ] **(Optional) "Plugins" Page:** Implement plugin management functionality (listing, activation/deactivation - complex). (Requires deep understanding of YOURLS plugin architecture).
+- [x] **API Implementation:** Implement the YOURLS API endpoints in Python. (Requires detailed analysis of `yourls-api.php` for parameters, formats, auth). Basic implementation done in `src/app.py:/api`. Potential improvements: signature auth, XML format, parameter parity.
+- [ ] **(Optional) Plugin System Implementation (Complex):** Replicate YOURLS plugin architecture.
+    - [ ] **Plugin Discovery & Metadata:** Define plugin structure (e.g., Python module/package in `user/plugins`), implement discovery and metadata reading.
+    - [ ] **Plugin Activation State:** Implement storage for active plugins (e.g., DB table/option).
+    - [ ] **Admin UI - Plugin Management:** Create `/admin/plugins` page (list, activate, deactivate).
+    - [ ] **Hook System (Core):** Implement a Pythonic hook/signal system (`add_action`, `do_action`, `add_filter`, `apply_filters` equivalents). Define core hooks.
+    - [ ] **Plugin Loading:** Implement dynamic loading of *active* plugin code on app startup to register hooks.
+    - [ ] **(Optional) Plugin Admin Pages:** Allow plugins to register custom admin interface pages.
 - [ ] **AJAX Operations (for compatibility):** Refactor Add, Edit, Delete actions to use AJAX compatible with original YOURLS JS, if aiming for full JS compatibility. (Requires analysis of `admin-ajax.php` and related JS).
 - [ ] **JavaScript Parity:** Ensure full compatibility and initialization for features from `common.js`, `insert.js`, `share.js`, etc. (Requires detailed analysis of original JS and potentially PHP interaction).
 - [ ] **(Partially) i18n Support:** Review original `.po`/`.mo` files and PHP functions (`yourls__()`, `yourls_n()`) to ensure consistency if implementing i18n.
 - [ ] **(Partially) GeoIP Lookup:** Review original PHP code to see which specific GeoIP database/library is used, if aiming for exact replication.
+- [ ] **"Tools" Page:** Create the `/tools` route and `tools.html` template, replicating the bookmarklet generator and potentially other tools. (Requires analysis of `tools.php` for bookmarklet code generation). UPD: Основная функциональность страницы /tools в части генерации и обработки стандартных/мгновенных/простых/пользовательских букмарклетов реализована. Социальные букмарклеты требуют доработки
 
 ## Tasks Implementable with Standard Python/Flask Practices
 
