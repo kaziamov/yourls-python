@@ -6,7 +6,7 @@
     {# TODO: Add generator/description meta tags? #}
     <title>{% block title %}YOURLS Admin{% endblock %}</title>
     <link rel="shortcut icon" href="{{ url_for('images', path='/favicon.svg') }}">
-    
+
     {# CSS Files - Added tablesorter.css #}
     <link rel="stylesheet" href="{{ url_for('css', path='/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('css', path='/tablesorter.css') }}">
@@ -37,7 +37,7 @@
             {% if request.session.get('user_id') %}
                 {# User is logged in #}
                 <li id="admin_menu_logout_link">Hello admin (<a href="{{ request.url_for('logout') }}">Logout</a>)</li> {# Simple user display #}
-                <li id="admin_menu_admin_link" class="admin_menu_toplevel"><a href="{{ request.url_for('admin_index_get') }}" title="Go to the admin interface">Admin interface</a></li> {# Use url_for #}
+                <li id="admin_menu_admin_link" class="admin_menu_toplevel"><a href="/" title="Go to the admin interface">Admin interface</a></li> {# Use static root path #}
                 <li id="admin_menu_tools_link" class="admin_menu_toplevel"><a href="{{ request.url_for('tools_get') }}" >Tools</a></li> {# Use url_for #}
                 <li id="admin_menu_plugins_link" class="admin_menu_toplevel"><a href="#" >Manage Plugins</a></li>
                 <li id="admin_menu_help_link"><a href="#">Help</a></li>
@@ -106,26 +106,26 @@
 <script type="text/javascript">
 // Simplified JS Init - Original common.js is complex
 $(document).ready(function() {
-    // Init table sorter 
+    // Init table sorter
     if ($(".tblSorter").length) {
-         $(".tblSorter").tablesorter({ 
+         $(".tblSorter").tablesorter({
             widgets: ['zebra'], // Use single quotes for array elements
-            headers: { 
+            headers: {
                 // Disable sorting on last column (Actions)
                 // Note: This assumes Actions is always last. Needs adjustment if cols change.
                 // Calculate index correctly (length - 1)
                 [($('.tblSorter thead th').length - 1)] : { sorter: false }
-            } 
-         }); 
+            }
+         });
     }
     // Init Calendar Inputs (if they exist)
     if (typeof $.fn.simpleDatePickr !== 'undefined') {
         $('#date_first, #date_second').simpleDatePickr({
             // Options based on jquery.cal.js usage, might need adjustment
             // Assuming l10n variables are globally defined (as in original example)
-            months : l10n_cal_month, 
-            days : l10n_cal_days, 
-            today : l10n_cal_today, 
+            months : l10n_cal_month,
+            days : l10n_cal_days,
+            today : l10n_cal_today,
             close : l10n_cal_close
         });
     }
@@ -175,7 +175,7 @@ function init_share_buttons() {
             update_share();
         }
         // Optional: select text in copy link field
-        $('#copylink').select(); 
+        $('#copylink').select();
     });
 
     // Hide sharebox if clicked outside
@@ -189,8 +189,8 @@ function init_share_buttons() {
 // Ensure update_share and init_clipboard are defined (might need to load share.js)
 // Placeholder for update_share if share.js isn't loaded or guaranteed
 if (typeof update_share === 'undefined') {
-    window.update_share = function() { 
-        console.log('update_share function placeholder called'); 
+    window.update_share = function() {
+        console.log('update_share function placeholder called');
         // Basic char count update if function not found
         var text = $('#tweet_body').val();
         var charcount = 280 - (text ? text.length : 0);
@@ -203,4 +203,4 @@ if (typeof init_clipboard === 'undefined') {
 </script>
 {% block scripts_extra %}{% endblock %}
 </body>
-</html> 
+</html>
