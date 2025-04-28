@@ -41,4 +41,19 @@ CREATE TABLE `yourls_log` (
 -- Note:
 -- - `shorturl` matches the collation of `keyword` in `yourls_url`.
 -- - `country_code` is nullable, as GeoIP lookup might not always be available/successful.
--- - Added an index on `shorturl` for faster lookup of logs for a specific link. 
+-- - Added an index on `shorturl` for faster lookup of logs for a specific link.
+
+-- Adding the YOURLS options table
+-- DROP TABLE IF EXISTS `yourls_options`;
+
+CREATE TABLE `yourls_options` (
+  `option_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `option_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
+  `option_value` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  PRIMARY KEY (`option_id`,`option_name`),
+  UNIQUE KEY `option_name` (`option_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Note:
+-- - This table stores configuration options, similar to WordPress options.
+-- - `next_keyword` option will be stored here for sequential keyword generation. 

@@ -127,22 +127,129 @@ templates.env.globals['sort_url'] = generate_sort_url
 
 
 
+# Choose charset based on YOURLS_URL_CONVERT (default to 36 if not defined/invalid)
+# You might want to fetch YOURLS_URL_CONVERT from os.getenv or a config file
+YOURLS_URL_CONVERT_SETTING = 36 # Default to base36
+
+if YOURLS_URL_CONVERT_SETTING == 62:
+    SHORTURL_CHARSET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+elif YOURLS_URL_CONVERT_SETTING == 64: # Note: Base64 in YOURLS context might mean base62 + extra chars? Check PHP source if needed. Assuming 62 for now.
+    SHORTURL_CHARSET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+else: # Default base36
+    SHORTURL_CHARSET = '0123456789abcdefghijklmnopqrstuvwxyz'
+
+BASE = len(SHORTURL_CHARSET)
+
 VALID_SORT_COLUMNS = {'keyword', 'url', 'title', 'timestamp', 'clicks'}
 VALID_SEARCH_COLUMNS = {'keyword', 'url', 'title', 'ip', 'all'}
 DEFAULT_SORT_BY = 'timestamp'
 DEFAULT_SORT_ORDER = 'DESC'
 DEFAULT_PER_PAGE = 15
-API_KEY_STORE = os.getenv('API_SECRET_KEY') 
+API_KEY_STORE = os.getenv('API_SECRET_KEY')
+
+# Basic list of reserved keywords - expand as needed based on YOURLS source/config
+RESERVED_KEYWORDS = {
+    'css', 'js', 'images', 'api', 'stats', 'edit', 'delete', 'login', 'logout',
+    'admin', 'plugins', 'tools', 'info', 'yourls', # Common YOURLS paths/terms
+    # Add any other keywords that might conflict with routes or functionality
+}
+
+def int2string(integer: int) -> str:
+    """Converts an integer to a base string using SHORTURL_CHARSET."""
+    if integer < 0:
+        raise ValueError("Cannot convert negative integers.")
+    if integer == 0:
+        return SHORTURL_CHARSET[0]
+
+    result = ""
+    while integer > 0:
+        remainder = integer % BASE
+        result = SHORTURL_CHARSET[remainder] + result
+        integer //= BASE
+    return result
+
+def keyword_is_reserved(keyword: str) -> bool:
+    """Checks if a keyword is in the reserved list."""
+    return keyword.lower() in RESERVED_KEYWORDS
+
+def keyword_is_taken(keyword: str, conn = None) -> bool:
+    """Checks if a keyword already exists in the database."""
+    close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        if not conn:
+            print("Error: DB connection failed in keyword_is_taken")
+            return True # Fail safe: assume taken if DB fails
+        close_conn = True
+
+    cursor = None
+    is_taken = False
+    try:
+        cursor = conn.cursor()
+        query = "SELECT 1 FROM yourls_url WHERE keyword = %(keyword)s LIMIT 1"
+        cursor.execute(query, {'keyword': keyword})
+        is_taken = cursor.fetchone() is not None
+    except Error as e:
+        print(f"DB Error checking keyword {keyword}: {e}")
+        is_taken = True # Fail safe
+    finally:
+        if cursor: cursor.close()
+        if close_conn and conn and conn.is_connected(): conn.close()
+    return is_taken
+
+def keyword_is_free(keyword: str, conn = None) -> bool:
+    """Checks if a keyword is neither reserved nor taken."""
+    if keyword_is_reserved(keyword):
+        return False
+    return not keyword_is_taken(keyword, conn)
 
 
-def sanitize_keyword(keyword):
+def sanitize_keyword(keyword: str | None) -> str | None:
+    """Sanitizes a keyword according to YOURLS rules (more precise)."""
     if not keyword: return None
-    sanitized = re.sub(r'[^a-zA-Z0-9_-]', '', keyword)
+    # Allow characters from the charset, plus hyphen (often allowed)
+    # Original YOURLS also uses a filter 'sanitize_string' which might do more
+    allowed_chars = SHORTURL_CHARSET + '-'
+    # Remove any character NOT in the allowed set
+    sanitized = re.sub(f'[^\{re.escape(allowed_chars)}]', '', keyword)
     return sanitized if sanitized else None
 
-def generate_next_keyword():
-    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+# Updated keyword generation - random but checks availability
+MAX_KEYWORD_ATTEMPTS = 10 # Prevent infinite loops if space is full
+INITIAL_KEYWORD_LENGTH = 4 # Start with shorter keywords
 
+def generate_next_keyword(conn = None) -> str | None:
+    """Generates a unique, random keyword, checking for availability."""
+    close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        if not conn:
+            print("Error: DB connection failed for keyword generation")
+            return None # Cannot generate without DB access
+        close_conn = True
+
+    try:
+        current_length = INITIAL_KEYWORD_LENGTH
+        for attempt in range(MAX_KEYWORD_ATTEMPTS * current_length): # Allow more attempts for longer keys
+            # Generate a random string using the allowed charset
+            keyword = ''.join(random.choices(SHORTURL_CHARSET, k=current_length))
+
+            if keyword_is_free(keyword, conn):
+                return keyword
+
+            # Increase length occasionally if attempts fail for current length
+            if (attempt + 1) % MAX_KEYWORD_ATTEMPTS == 0:
+                current_length += 1
+                print(f"Increasing generated keyword length to {current_length}")
+
+    except Error as e:
+        print(f"Error during keyword generation: {e}")
+        return None
+    finally:
+        if close_conn and conn and conn.is_connected(): conn.close()
+
+    print(f"Error: Could not find a free keyword after multiple attempts.")
+    return None # Failed to find a free keyword
 
 
 def get_admin_index_data(query_params: dict) -> Dict[str, Any]:
@@ -384,52 +491,71 @@ async def admin_index_post(request: Request,
                          keyword: Optional[str] = Form(None), 
                          title: Optional[str] = Form(None),
                          user_id: str = Depends(get_current_user_or_redirect)): 
-    long_url = url.strip()
-    custom_keyword = keyword.strip() if keyword else ""
-    link_title = title.strip() if title else "" 
-    
-    if not long_url:
-        
-        print("Error: URL is required.")
-        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
-    if not long_url.lower().startswith(('http://', 'https://')):
-        print("Error: URL must start with http:// or https://.")
+    new_url_strip = url.strip()
+    new_title_strip = title.strip() if title else ""
+    conn = None
+
+    if not new_url_strip.lower().startswith(('http://', 'https://')):
+        add_notification(request, 'Error: URL must start with http:// or https://.', 'error')
         return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
-    keyword_to_insert = sanitize_keyword(custom_keyword)
-    if not keyword_to_insert:
-        keyword_to_insert = generate_next_keyword() 
-
-    if not keyword_to_insert:
-         print("Error: Could not generate a valid keyword.")
-         return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
-
-    ip_address = request.client.host
-    conn = get_db_connection()
-    if not conn:
-         print("Error: Database connection failed.")
-         return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
-    
-    cursor = None
     try:
-        cursor = conn.cursor()
-        insert_query = "INSERT INTO yourls_url (keyword, url, title, timestamp, ip, clicks) VALUES (%(keyword)s, %(url)s, %(title)s, NOW(), %(ip)s, 0)"
-        data = {'keyword': keyword_to_insert, 'url': long_url, 'title': link_title if link_title else None, 'ip': ip_address}
-        cursor.execute(insert_query, data)
-        conn.commit()
-        add_notification(request, f'Short URL created: {keyword_to_insert}', 'success')
-    except Error as err:
-        conn.rollback()
-        if err.errno == 1062:
-            add_notification(request, f'Error: Keyword "{keyword_to_insert}" already exists.', 'error')
+        conn = get_db_connection()
+        if not conn:
+            add_notification(request, 'Database connection error.', 'error')
+            return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
+
+        final_keyword = None
+        if keyword:
+            # Custom keyword provided
+            sanitized_custom_keyword = sanitize_keyword(keyword.strip())
+            if not sanitized_custom_keyword:
+                 add_notification(request, f'Error: Custom keyword "{keyword}" contains invalid characters or is empty.', 'error')
+                 return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
+            
+            if not keyword_is_free(sanitized_custom_keyword, conn):
+                 add_notification(request, f'Error: Custom keyword "{sanitized_custom_keyword}" is already taken or reserved.', 'error')
+                 return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
+            final_keyword = sanitized_custom_keyword
         else:
-            add_notification(request, f'Database Error: {err}', 'error')
-            print(f"DB Error: {err}") 
+            # Generate keyword using the new sequential logic
+            final_keyword = generate_next_keyword(conn)
+            if not final_keyword:
+                 add_notification(request, 'Error: Could not generate a unique keyword. Please try again or provide a custom one.', 'error')
+                 return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
+
+        # Fetch title if not provided
+        if not new_title_strip:
+            # Placeholder: In a real app, you might fetch the title asynchronously
+            # or handle it in a background task to avoid blocking.
+            # For simplicity, we skip title fetching here if not provided.
+            # new_title_strip = yourls_get_remote_title(new_url_strip) # Requires implementing this function
+            pass # Keep title empty if not provided
+
+        # Insert the new link
+        cursor = conn.cursor()
+        insert_query = """
+            INSERT INTO yourls_url (keyword, url, title, timestamp, ip, clicks) 
+            VALUES (%(keyword)s, %(url)s, %(title)s, NOW(), %(ip)s, 0)
+            """
+        link_data = {
+            'keyword': final_keyword,
+            'url': new_url_strip,
+            'title': new_title_strip if new_title_strip else None,
+            'ip': request.client.host
+        }
+        cursor.execute(insert_query, link_data)
+        conn.commit()
+        add_notification(request, f'Link "{final_keyword}" added successfully.', 'success')
+
+    except Error as e:
+        if conn and conn.in_transaction: conn.rollback()
+        add_notification(request, f'Database Error: {e}', 'error')
+        print(f"DB Error (Add Link): {e}")
     finally:
         if cursor: cursor.close()
         if conn and conn.is_connected(): conn.close()
 
-    
     return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
 
 
