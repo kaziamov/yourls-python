@@ -339,20 +339,14 @@ def delete_link(keyword):
 
 @app.route('/<string:keyword>')
 def redirect_link(keyword):
-    """Handles the redirection of a short keyword to its original URL."""
-    # Sanitize the keyword first
-    # Note: YOURLS uses a specific character set, adapt sanitize_keyword if needed.
-    sanitized_keyword = sanitize_keyword(keyword) 
-    
+    """Handles the redirection and logs the click."""
+    sanitized_keyword = sanitize_keyword(keyword)
     if not sanitized_keyword:
-        # If sanitization results in empty string or invalid chars were used
         return abort(404)
 
     conn = get_db_connection()
     if not conn:
-        # Service unavailable if DB is down
-        # Maybe show a custom error page later?
-        return abort(503, description="Database connection failed") 
+        return abort(503, description="Database connection failed")
 
     cursor = None
     try:
@@ -366,29 +360,53 @@ def redirect_link(keyword):
         if result and result['url']:
             original_url = result['url']
             
-            # Update click count (important to do this before redirecting)
+            # --- Log the click and update count --- 
+            # Use a single transaction for both operations
             try:
+                # Get click details
+                click_time = datetime.now()
+                referrer = request.referrer[:200] if request.referrer else None # Limit length
+                user_agent = request.user_agent.string[:255] # Limit length
+                ip_address = request.remote_addr
+                country_code = None # Placeholder - GeoIP lookup needed
+                # TODO: Implement GeoIP lookup (e.g., using geoip2 library and database)
+                # country_code = get_country_code(ip_address)
+
+                log_query = """
+                INSERT INTO yourls_log (click_time, shorturl, referrer, user_agent, ip_address, country_code)
+                VALUES (%(time)s, %(keyword)s, %(ref)s, %(ua)s, %(ip)s, %(country)s)
+                """
+                log_data = {
+                    'time': click_time,
+                    'keyword': sanitized_keyword,
+                    'ref': referrer,
+                    'ua': user_agent,
+                    'ip': ip_address,
+                    'country': country_code
+                }
+                cursor.execute(log_query, log_data)
+
                 update_query = "UPDATE yourls_url SET clicks = clicks + 1 WHERE keyword = %(keyword)s"
-                # Need a separate cursor or ensure the previous one is done?
-                # Using the same cursor should be fine here.
                 cursor.execute(update_query, {'keyword': sanitized_keyword})
-                conn.commit()
-            except Error as update_err:
-                # Log the error, but still redirect if URL was found
-                print(f"DB Error (Update Clicks): {update_err}")
-                conn.rollback() # Rollback the failed click update
+                
+                conn.commit() # Commit both log and update together
+
+            except Error as log_update_err:
+                # If logging or update fails, rollback and log the error, but still redirect
+                print(f"DB Error (Log/Update Clicks): {log_update_err}")
+                conn.rollback()
 
             # Perform the redirect
-            # Use 301 for permanent redirect, as is common for URL shorteners
             return redirect(original_url, code=301)
         else:
-            # Keyword not found in the database
             return abort(404)
 
     except Error as e:
         print(f"DB Error (Redirect): {e}")
-        # Generic server error if something went wrong during lookup
-        return abort(500, description="Database query error") 
+        # Rollback if transaction was started but failed before commit attempt
+        if conn.in_transaction:
+            conn.rollback()
+        return abort(500, description="Database query error")
     finally:
         if cursor:
             cursor.close()
@@ -397,12 +415,11 @@ def redirect_link(keyword):
 
 @app.route('/stats/<string:keyword>')
 def link_stats(keyword):
-    """Displays basic statistics for a specific link."""
+    """Displays statistics for a specific link, including recent clicks."""
     sanitized_keyword = sanitize_keyword(keyword)
     if not sanitized_keyword:
         flash(f'Invalid keyword format: {keyword}', 'error')
         return redirect(url_for('admin_index'))
-        # Or maybe abort(404)?
 
     conn = get_db_connection()
     if not conn:
@@ -411,31 +428,47 @@ def link_stats(keyword):
 
     cursor = None
     link_data = None
+    click_logs = [] # Initialize empty list for logs
     try:
         cursor = conn.cursor(dictionary=True)
-        select_query = "SELECT keyword, url, title, timestamp, clicks FROM yourls_url WHERE keyword = %(keyword)s"
-        cursor.execute(select_query, {'keyword': sanitized_keyword})
+        
+        # Fetch basic link info
+        select_link_query = "SELECT keyword, url, title, timestamp, clicks FROM yourls_url WHERE keyword = %(keyword)s"
+        cursor.execute(select_link_query, {'keyword': sanitized_keyword})
         link_data = cursor.fetchone()
         
         if not link_data:
             flash(f'Link with keyword \"{sanitized_keyword}\" not found.', 'warning')
+            # No need to close cursor/conn here, finally block will handle it
             return redirect(url_for('admin_index'))
 
-        # TODO: Fetch detailed click log data here if/when available
-        # e.g., from a `yourls_log` table
+        # Fetch recent click logs (e.g., last 100)
+        select_logs_query = """
+        SELECT click_time, referrer, user_agent, ip_address, country_code 
+        FROM yourls_log 
+        WHERE shorturl = %(keyword)s 
+        ORDER BY click_time DESC 
+        LIMIT 100
+        """
+        cursor.execute(select_logs_query, {'keyword': sanitized_keyword})
+        click_logs = cursor.fetchall()
 
     except Error as e:
         flash(f'Database error fetching stats: {e}', 'error')
         print(f"DB Error (Stats): {e}")
-        return redirect(url_for('admin_index')) # Redirect on error
+        # link_data might be None if error happened early
+        # click_logs will be empty
+        # Redirecting might lose context, maybe render stats page with error?
+        # For now, keep redirect:
+        return redirect(url_for('admin_index')) 
     finally:
         if cursor:
             cursor.close()
         if conn and conn.is_connected():
             conn.close()
 
-    # If link_data was fetched successfully
-    return render_template('stats.html', link=link_data)
+    # Pass both link_data and click_logs to the template
+    return render_template('stats.html', link=link_data, logs=click_logs)
 
 @app.route('/edit/<string:keyword>', methods=['GET', 'POST'])
 def edit_link(keyword):

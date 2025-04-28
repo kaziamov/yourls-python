@@ -29,11 +29,44 @@
         </p>
     </div>
 
-    {# Placeholder for detailed click log table/chart #}
+    {# Placeholder for detailed click log table/chart - Replaced below #}
     <div class="detailed-stats">
-        <h3>Detailed Click History (Placeholder)</h3>
-        <p><em>Detailed click tracking (referrer, user agent, location, etc.) is not yet implemented. Requires a logging table.</em></p>
-        {# TODO: Add table or chart based on log data when available #}
+        <h3>Recent Click History (Last 100)</h3>
+        
+        {% if logs %}
+            <table class="click-log-table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Referrer</th>
+                        <th>User Agent</th>
+                        <th>IP Address</th>
+                        {# <th>Country</th> #} {# Uncomment when GeoIP is added #}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log_entry in logs %}
+                        <tr>
+                            <td>{{ log_entry.click_time | dateformat('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td>
+                                {% if log_entry.referrer %}
+                                    <a href="{{ log_entry.referrer }}" target="_blank" rel="noopener noreferrer" title="{{ log_entry.referrer }}">
+                                        {{ log_entry.referrer | truncate(50) }}
+                                    </a>
+                                {% else %}
+                                    <em>Direct</em>
+                                {% endif %}
+                            </td>
+                            <td title="{{ log_entry.user_agent }}">{{ log_entry.user_agent | truncate(60) }}</td>
+                            <td>{{ log_entry.ip_address }}</td>
+                            {# <td>{{ log_entry.country_code or 'N/A' }}</td> #}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p><em>No clicks recorded yet for this link.</em></p>
+        {% endif %}
     </div>
 
     <p><a href="{{ url_for('admin_index') }}">&laquo; Back to Admin Index</a></p>
