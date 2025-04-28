@@ -1,14 +1,20 @@
 import os
-from flask import Flask, render_template, request, url_for
+from flask import Flask, render_template, request, url_for, flash, redirect
 from dotenv import load_dotenv
 import mysql.connector
 from mysql.connector import Error
 from datetime import datetime
 import math
+import re
+import random
+import string
 
 load_dotenv()  # Load variables from .env file
 
 app = Flask(__name__)
+
+# Configure Secret Key for flash messages
+app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-should-be-changed')
 
 # Configure Jinja2 to load templates from the 'templates' directory
 app.template_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
@@ -78,10 +84,18 @@ def generate_sort_url(column_name, current_sort_by, current_sort_order, current_
     # args['page'] = 1 # Optional: Reset page when sort changes
     return url_for('admin_index', **args)
 
+# Helper function for pagination URLs
+def generate_page_url(page_num, current_args):
+    """Generates URL for a specific page, preserving other query params."""
+    args = current_args.copy()
+    args['page'] = page_num
+    return url_for('admin_index', **args)
+
 # Register filters and globals
 app.jinja_env.filters['numberformat'] = simple_number_format
 app.jinja_env.filters['dateformat'] = format_datetime
 app.add_template_global(generate_sort_url, name='sort_url')
+app.add_template_global(generate_page_url, name='page_url') # Register page_url
 
 # --- Data Fetching ---
 def get_admin_index_data(args):
@@ -228,11 +242,93 @@ def get_admin_index_data(args):
 
     return context
 
+# --- Helper Functions (Validation/Sanitization - TODO: Improve these) ---
+def sanitize_keyword(keyword):
+    """Basic keyword sanitization (allows letters, numbers, dash, underscore)."""
+    if not keyword:
+        return None
+    # Replace invalid characters - needs refinement based on YOURLS rules
+    sanitized = re.sub(r'[^a-zA-Z0-9_-]', '', keyword)
+    return sanitized if sanitized else None # Return None if empty after sanitization
+
+def generate_next_keyword():
+    """Generates the next sequential short keyword (base 36). Placeholder.
+       Requires knowing the last used ID or keyword.
+    """
+    # This needs a proper implementation, likely querying the DB for the highest ID
+    # or using a dedicated sequence/counter.
+    # For now, returning None to force manual keyword or fail.
+    # A simple approach might involve converting MAX(id) to base 36.
+    # Or just using a random string for simplicity initially.
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
 
 # --- Routes ---
-@app.route('/')
+@app.route('/', methods=['GET', 'POST']) # Allow POST requests
 def admin_index():
-    """Renders the main admin page with data from the database."""
+    """Renders the main admin page and handles link addition."""
+    if request.method == 'POST':
+        # Handle the form submission
+        long_url = request.form.get('url', '').strip()
+        custom_keyword = request.form.get('keyword', '').strip()
+        title = request.form.get('title', '').strip()
+
+        if not long_url:
+            flash('Error: URL is required.', 'error')
+        else:
+            # Basic URL validation (starts with http/https)
+            if not long_url.lower().startswith(('http://', 'https://')):
+                flash('Error: URL must start with http:// or https://.', 'error')
+            else:
+                keyword_to_insert = sanitize_keyword(custom_keyword)
+                if not keyword_to_insert:
+                    # If no custom keyword or invalid, generate one (placeholder)
+                    keyword_to_insert = generate_next_keyword()
+                    # TODO: Check if generated keyword exists and retry if needed
+
+                if not keyword_to_insert:
+                     flash('Error: Could not generate a valid keyword.', 'error')
+                else:
+                    # Get IP address
+                    ip_address = request.remote_addr
+                    
+                    # Attempt to insert into DB
+                    conn = get_db_connection()
+                    if not conn:
+                        flash('Error: Database connection failed.', 'error')
+                    else:
+                        cursor = None
+                        try:
+                            cursor = conn.cursor()
+                            insert_query = """
+                            INSERT INTO yourls_url (keyword, url, title, timestamp, ip, clicks)
+                            VALUES (%(keyword)s, %(url)s, %(title)s, NOW(), %(ip)s, 0)
+                            """
+                            data = {
+                                'keyword': keyword_to_insert,
+                                'url': long_url,
+                                'title': title if title else None, # Use None for empty title
+                                'ip': ip_address
+                            }
+                            cursor.execute(insert_query, data)
+                            conn.commit()
+                            flash(f'Short URL created: {keyword_to_insert}', 'success')
+                        except mysql.connector.Error as err:
+                            conn.rollback() # Rollback on error
+                            if err.errno == 1062: # Duplicate entry error code
+                                flash(f'Error: Keyword \"{keyword_to_insert}\" already exists.', 'error')
+                            else:
+                                flash(f'Database Error: {err}', 'error')
+                                print(f"DB Error: {err}")
+                        finally:
+                            if cursor:
+                                cursor.close()
+                            if conn and conn.is_connected():
+                                conn.close()
+
+        # Redirect back to the index page after POST to avoid re-submission on refresh
+        return redirect(url_for('admin_index'))
+
+    # --- Handle GET request (as before) ---
     context = get_admin_index_data(request.args)
     return render_template('admin_index.html', **context)
 

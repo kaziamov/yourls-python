@@ -14,6 +14,17 @@
         {# Add navigation menu here #}
     </header>
 
+    {# Display flashed messages #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flashed-messages">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category or 'info' }}">{{ message }}</div>
+        {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
     <main>
         {% block content %}
         {# Page specific content will go here #}
