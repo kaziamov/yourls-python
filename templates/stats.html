@@ -11,7 +11,8 @@
     <div id="stats_summary" class="stats_summary"> {# Changed class? Original doesn't seem to have specific container here #}
         <p><strong>Original URL:</strong> <a href="{{ link.url }}" title="{{ link.url }}">{{ link.url | truncate(80) }}</a></p>
         <p><strong>Title:</strong> {{ link.title | default('<em>No title provided</em>') | safe }}</p>
-        <p><strong>Short URL:</strong> <a href="{{ url_for('redirect_link', keyword=link.keyword, _external=True) }}">{{ url_for('redirect_link', keyword=link.keyword, _external=True) }}</a></p>
+        {# Use the pre-calculated absolute URL from context #}
+        <p><strong>Short URL:</strong> <a href="{{ absolute_short_url }}">{{ absolute_short_url }}</a></p>
         <p><strong>Date Created:</strong> {{ link.timestamp | dateformat('%Y-%m-%d %H:%M:%S') }}</p>
         <p><strong>Total Clicks:</strong> <strong class="increment">{{ link.clicks | numberformat }}</strong></p>
     </div>

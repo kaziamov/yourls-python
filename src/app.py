@@ -5,7 +5,7 @@ import random
 import string
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
 
 from fastapi import FastAPI, Request, Depends, Form, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -113,7 +113,6 @@ def generate_sort_url(request: Request, column: str, current_sort_by: str, curre
     
     params = {k: v for k, v in params.items() if v is not None}
 
-    
     
     base_url = request.url_for('admin_index_get')
     query_string = urlencode(params)
@@ -371,13 +370,11 @@ async def admin_index_get(request: Request, user_id: str = Depends(get_current_u
     context["request_args"] = request.query_params 
     context["current_user_id"] = user_id 
     
-    
     try:
         test_url = request.url_for('admin_index_get')
         print(f"DEBUG: url_for('admin_index_get') inside route handler generated: {test_url}")
     except Exception as e:
         print(f"ERROR: url_for('admin_index_get') failed inside route handler: {e}")
-    
     
     return templates.TemplateResponse("admin_index.html", context)
 
@@ -390,7 +387,6 @@ async def admin_index_post(request: Request,
     long_url = url.strip()
     custom_keyword = keyword.strip() if keyword else ""
     link_title = title.strip() if title else "" 
-
     
     if not long_url:
         
@@ -505,7 +501,23 @@ async def link_stats_get(request: Request, keyword: str, user_id: str = Depends(
         if cursor: cursor.close()
         if conn and conn.is_connected(): conn.close()
 
-    context = {"request": request, "link": link_data, "logs": click_logs, "current_user_id": user_id}
+    # Construct absolute short URL in Python
+    try:
+        short_url_path = str(request.url_for('redirect_link', keyword=link_data['keyword']))
+        base_url = str(request.base_url)
+        absolute_short_url = urljoin(base_url, short_url_path.lstrip('/')) # Use urljoin for robust joining
+    except Exception as e: # Catch potential errors during URL generation
+        print(f"Error generating absolute URL for stats: {e}")
+        absolute_short_url = "#error" # Fallback URL
+
+    # Prepare context for the template
+    context = {
+        "request": request, 
+        "link": link_data, 
+        "logs": click_logs, 
+        "current_user_id": user_id,
+        "absolute_short_url": absolute_short_url # Pass the generated URL
+    }
     return templates.TemplateResponse('stats.html', context)
 
 @app.get("/edit/{keyword}", response_class=HTMLResponse, name="edit_link")

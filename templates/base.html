@@ -15,10 +15,10 @@
     {% block head_extra %}{% endblock %}
 
     {# JS Files - Ensure correct order and inclusion #}
-    <script src="{{ url_for('js', path='/jquery.min.js') }}"></script> {# Original uses jquery-3.5.1.min.js #}
+    <script src="{{ url_for('js', path='/jquery-3.5.1.min.js') }}"></script>
     <script src="{{ url_for('js', path='/common.js') }}"></script>
     <script src="{{ url_for('js', path='/jquery.notifybar.js') }}"></script>
-    <script src="{{ url_for('js', path='/jquery.tablesorter.min.js') }}"></script> {# Original uses jquery-3.tablesorter.min.js #}
+    <script src="{{ url_for('js', path='/jquery-3.tablesorter.min.js') }}"></script>
     <script src="{{ url_for('js', path='/jquery.cal.js') }}"></script>
     {# TODO: Add tablesorte.js, insert.js, share.js, clipboard.min.js conditionally? #}
 </head>
