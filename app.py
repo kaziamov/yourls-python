@@ -8,6 +8,7 @@ import math
 import re
 import random
 import string
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user # Added Flask-Login imports
 
 load_dotenv()  # Load variables from .env file
 
@@ -21,6 +22,40 @@ app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-should-
 
 # Configure Jinja2 to load templates from the 'templates' directory
 app.template_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
+
+# --- Flask-Login Setup ---
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login' # The name of the view function for the login page
+login_manager.login_message_category = "info" # Optional: category for flashed messages
+
+# In-memory user store (using plain text password)
+ADMIN_USERNAME_STORE = os.getenv('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD_STORE = os.getenv('ADMIN_PASSWORD') # Reading plain password
+
+class User(UserMixin):
+    def __init__(self, id, username):
+        self.id = id
+        self.username = username
+
+    @staticmethod
+    def get(user_id):
+        # In our simple case, user_id is always 1 for the admin
+        if user_id == '1' and ADMIN_PASSWORD_STORE: # Check if password exists
+            return User(id='1', username=ADMIN_USERNAME_STORE)
+        return None
+
+    @staticmethod
+    def validate(username, password):
+        # Simple string comparison - NOT RECOMMENDED FOR PRODUCTION
+        if username == ADMIN_USERNAME_STORE and ADMIN_PASSWORD_STORE:
+            if ADMIN_PASSWORD_STORE == password: # Direct comparison
+                return User.get('1')
+        return None
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.get(user_id)
 
 # --- Constants & Config ---
 # Valid columns for sorting and searching
@@ -266,7 +301,47 @@ def generate_next_keyword():
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
 
 # --- Routes ---
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Handles user login."""
+    if current_user.is_authenticated:
+        return redirect(url_for('admin_index')) # Already logged in
+    
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        # remember = True if request.form.get('remember') else False # For 'Remember Me' checkbox
+        
+        user = User.validate(username, password)
+        
+        if not user:
+            flash('Invalid username or password.', 'error')
+            return redirect(url_for('login'))
+        
+        # Log the user in
+        login_user(user) # Add remember=remember if checkbox is used
+        
+        flash('Logged in successfully.', 'success')
+        
+        # Redirect to the page user was trying to access, or index
+        next_page = request.args.get('next')
+        if not next_page or not next_page.startswith('/'): # Basic security check
+            next_page = url_for('admin_index')
+        return redirect(next_page)
+        
+    # GET request: Show the login form
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required # Must be logged in to log out
+def logout():
+    """Handles user logout."""
+    logout_user()
+    flash('You have been logged out.', 'success')
+    return redirect(url_for('login'))
+
 @app.route('/', methods=['GET', 'POST'])
+@login_required # Protect the admin index
 def admin_index():
     """Renders the main admin page and handles link addition."""
     if request.method == 'POST':
@@ -336,6 +411,7 @@ def admin_index():
     return render_template('admin_index.html', **context)
 
 @app.route('/delete/<string:keyword>', methods=['POST'])
+@login_required # Protect delete action
 def delete_link(keyword):
     ... 
     # (delete_link implementation remains the same) ...
@@ -417,6 +493,7 @@ def redirect_link(keyword):
             conn.close()
 
 @app.route('/stats/<string:keyword>')
+@login_required # Protect stats page
 def link_stats(keyword):
     """Displays statistics for a specific link, including recent clicks."""
     sanitized_keyword = sanitize_keyword(keyword)
@@ -474,6 +551,7 @@ def link_stats(keyword):
     return render_template('stats.html', link=link_data, logs=click_logs)
 
 @app.route('/edit/<string:keyword>', methods=['GET', 'POST'])
+@login_required # Protect edit action
 def edit_link(keyword):
     """Handles displaying the edit form and updating the link."""
     original_keyword = sanitize_keyword(keyword)

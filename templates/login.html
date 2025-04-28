@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Login - YOURLS Admin{% endblock %}
+
+{# Override body class for potentially different styling #}
+{% set body_class = 'login' %}
+
+{% block content %}
+    <div id="login_wrap">
+        {# Display flashed messages specifically for login page if needed #}
+        {# {% with messages = get_flashed_messages(with_categories=true, category_filter=['error','info']) %} ... {% endwith %} #}
+
+        <h2>Login Required</h2>
+        <form method="post" action="{{ url_for('login') }}">
+            <p>
+                <label for="username">Username:</label>
+                <input type="text" name="username" id="username" class="text" required autofocus>
+            </p>
+            <p>
+                <label for="password">Password:</label>
+                <input type="password" name="password" id="password" class="text" required>
+            </p>
+            <p>
+                {# Add remember me checkbox? Needs handling in login_user #}
+                {# <label for="remember"><input type="checkbox" name="remember" id="remember" value="1"> Remember me</label> #}
+            </p>
+            <p>
+                <button type="submit" class="button primary">Log In</button>
+            </p>
+        </form>
+        {# Add link to password reset if implemented later #}
+    </div>
+{% endblock %} 

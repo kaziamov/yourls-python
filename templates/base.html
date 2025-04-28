@@ -30,12 +30,17 @@
     </header>
     <nav role="navigation"> {# Added role #}
         <ul id="admin_menu">
-             {# TODO: Add Login/Logout based on auth status #}
-            <li id="admin_menu_logout_link">Hello user (<a href="#">Logout</a>)</li>
-            <li id="admin_menu_admin_link" class="admin_menu_toplevel"><a href="{{ url_for('admin_index') }}" title="Go to the admin interface">Admin interface</a></li>
-            <li id="admin_menu_tools_link" class="admin_menu_toplevel"><a href="#" >Tools</a></li>
-            <li id="admin_menu_plugins_link" class="admin_menu_toplevel"><a href="#" >Manage Plugins</a></li>
-            <li id="admin_menu_help_link"><a href="#">Help</a></li> {# TODO: Link to readme? #}
+            {% if current_user.is_authenticated %}
+                <li id="admin_menu_logout_link">Hello {{ current_user.username }} (<a href="{{ url_for('logout') }}">Logout</a>)</li>
+                <li id="admin_menu_admin_link" class="admin_menu_toplevel"><a href="{{ url_for('admin_index') }}" title="Go to the admin interface">Admin interface</a></li>
+                <li id="admin_menu_tools_link" class="admin_menu_toplevel"><a href="#" >Tools</a></li>
+                <li id="admin_menu_plugins_link" class="admin_menu_toplevel"><a href="#" >Manage Plugins</a></li>
+                <li id="admin_menu_help_link"><a href="#">Help</a></li> {# TODO: Link to readme? #}
+            {% else %}
+                 <li id="admin_menu_login_link"><a href="{{ url_for('login') }}">Login</a></li>
+                 {# Optionally show Help link even when logged out? #}
+                 {# <li id="admin_menu_help_link"><a href="#">Help</a></li> #}
+            {% endif %}
         </ul>
     </nav>
 
