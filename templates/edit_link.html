@@ -7,7 +7,8 @@
 
     {# Note: Editing the keyword itself is allowed, but can break existing shared links #}
     <div class="edit-url-form">
-      <form method="post" action="{{ url_for('edit_link', keyword=original_keyword) }}">
+      <form method="post" action="{{ url_for('edit_link_post', keyword=original_keyword) }}">
+        <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
         <fieldset>
             <legend>Update Link Details</legend>
             <div>

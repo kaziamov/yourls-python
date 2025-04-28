@@ -21,6 +21,7 @@ import urllib.parse
 import secrets
 import geoip2.database
 from geoip2.errors import AddressNotFoundError
+from passlib.context import CryptContext
 
 
 load_dotenv() 
@@ -512,8 +513,20 @@ templates.env.globals['get_notifications'] = get_notifications
 
 
 ADMIN_USERNAME_STORE = os.getenv('ADMIN_USERNAME', 'admin')
-ADMIN_PASSWORD_STORE = os.getenv('ADMIN_PASSWORD')
+ADMIN_PASSWORD_HASH_STORE = os.getenv('ADMIN_PASSWORD_HASH')
 
+# Setup password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Function to verify password
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    if not hashed_password: # Handle case where hash is not set
+        return False
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception as e:
+        print(f"Error verifying password: {e}") # Log potential errors
+        return False
 
 async def get_current_user_or_redirect(request: Request):
     user_id = request.session.get('user_id')
@@ -534,6 +547,33 @@ async def get_current_user_or_redirect(request: Request):
     return user_id 
 
 
+# --- CSRF Protection Helpers ---
+CSRF_TOKEN_SESSION_KEY = "_csrf_token"
+
+def get_csrf_token(request: Request) -> str:
+    """Gets the CSRF token from the session, generating one if it doesn't exist."""
+    token = request.session.get(CSRF_TOKEN_SESSION_KEY)
+    if not token:
+        token = secrets.token_hex(32)
+        request.session[CSRF_TOKEN_SESSION_KEY] = token
+        # Ensure session is marked as modified if we add the token
+        # SessionMiddleware might do this automatically, but explicit is safer
+        # request.session.modified = True 
+    return token
+
+async def verify_csrf_token(request: Request, csrf_token: str = Form(...)):
+    """Dependency that verifies the submitted CSRF token against the session."""
+    stored_token = request.session.get(CSRF_TOKEN_SESSION_KEY)
+    if not stored_token or not csrf_token or not secrets.compare_digest(stored_token, csrf_token):
+        print(f"CSRF verification failed. Stored: {stored_token}, Received: {csrf_token}")
+        raise HTTPException(status_code=403, detail="CSRF token mismatch or missing.")
+    return True # Indicate success
+
+# Add get_csrf_token to template globals so forms can access it
+templates.env.globals['get_csrf_token'] = get_csrf_token
+
+
+
 
 @app.get("/login", response_class=HTMLResponse, name="login_get")
 async def login_get(request: Request):
@@ -543,25 +583,33 @@ async def login_get(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
 
 @app.post("/login", response_class=RedirectResponse, name="login_post")
-async def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
-    
-    if username == ADMIN_USERNAME_STORE and ADMIN_PASSWORD_STORE and password == ADMIN_PASSWORD_STORE:
+async def login_post(request: Request, 
+                     username: str = Form(...), 
+                     password: str = Form(...),
+                     _=Depends(verify_csrf_token)): # Add CSRF dependency
+    # Verify username and HASHED password
+    if username == ADMIN_USERNAME_STORE and verify_password(password, ADMIN_PASSWORD_HASH_STORE):
+        # Set user ID in session
+        request.session['user_id'] = 'admin' # Use a simple identifier
+        add_notification(request, "Logged in successfully.", "success") # Use notification
         
-        request.session['user_id'] = 'admin' 
-        add_notification(request, "Logged in successfully.", "success") 
-        
-        
-        next_url = request.query_params.get('next', str(request.url_for('admin_index_get'))) 
-        
+        # Redirect to originally requested page or index
+        # Ensure default is also string if used directly
+        default_next = str(request.url_for('admin_index_get')) 
+        next_url = request.query_params.get('next', default_next)
+        # Basic validation for open redirect vulnerability
+        # Convert base_url to string for comparison
         if not next_url.startswith('/') and not next_url.startswith(str(request.base_url)):
-             next_url = str(request.url_for('admin_index_get')) 
+             next_url = default_next
         return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
     else:
-        add_notification(request, "Invalid username or password.", "error") 
-        
-        
-        login_url_base = str(request.url_for('login_get')) 
-        login_url = login_url_base + "?error=1"
+        if not ADMIN_PASSWORD_HASH_STORE:
+             add_notification(request, "Password check is not configured correctly on the server.", "error")
+        else:
+             add_notification(request, "Invalid username or password.", "error") # Use notification
+        # Redirect back to login page
+        login_url_base = str(request.url_for('login_get')) # Convert to string
+        login_url = login_url_base + "?error=1" # Keep error param for potential JS use
         return RedirectResponse(url=login_url, status_code=status.HTTP_302_FOUND)
 
 @app.get("/logout", response_class=RedirectResponse, name="logout")
@@ -607,12 +655,36 @@ async def add_link_endpoint(request: Request,
                         share: Optional[str] = None, # Share target (facebook, twitter, etc.)
                         jsonp: Optional[str] = None, # JSONP callback name
                         # Dependency
-                        user_id: str = Depends(get_current_user_or_redirect)): 
+                        user_id: str = Depends(get_current_user_or_redirect),
+                        # Add CSRF verification dependency
+                        # Note: This will only run fully if it's a POST request with form data
+                        # For GET, verify_csrf_token expects Form data which won't exist.
+                        # We need conditional verification or a different approach if GET needs CSRF.
+                        # Let's modify verify_csrf_token to handle this or add check here.
+                        # Let's add check inside the function for now.
+                        csrf_token: Optional[str] = Form(None)): 
 
     is_bookmarklet = request.method == "GET" and ur is not None
     is_share_request = request.method == "GET" and share is not None
     jsonp_callback = jsonp 
 
+    # --- CSRF Check for POST requests --- 
+    if request.method == "POST":
+        # Manually verify token for POST. 
+        # This avoids adding Depends which tries to read Form data on GET.
+        stored_token = request.session.get(CSRF_TOKEN_SESSION_KEY)
+        if not stored_token or not csrf_token or not secrets.compare_digest(stored_token, csrf_token):
+            print(f"CSRF verification failed for POST. Stored: {stored_token}, Received: {csrf_token}")
+            # Return error appropriate for form POST (usually redirect back or show error page)
+            add_notification(request, "Security token mismatch. Please try submitting the form again.", "error")
+            # Redirect back to where the form was likely submitted from (admin index)
+            return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
+        else:
+            # Optionally consume the token after successful POST verification if desired
+            # del request.session[CSRF_TOKEN_SESSION_KEY]
+            # request.session.modified = True
+            pass # Token verified for POST
+            
     source_url = None
     source_keyword = None
     source_title = ""
@@ -729,7 +801,10 @@ async def add_link_endpoint(request: Request,
 
 
 @app.post("/delete/{keyword}", response_class=RedirectResponse, name="delete_link")
-async def delete_link_post(request: Request, keyword: str, user_id: str = Depends(get_current_user_or_redirect)): 
+async def delete_link_post(request: Request, 
+                         keyword: str, 
+                         user_id: str = Depends(get_current_user_or_redirect),
+                         _=Depends(verify_csrf_token)): # Add CSRF dependency
     if not keyword: 
         print("Error: Invalid keyword for deletion.")
         return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
@@ -875,13 +950,14 @@ async def edit_link_get(request: Request, keyword: str, user_id: str = Depends(g
 
 @app.post("/edit/{keyword}", response_class=RedirectResponse, name="edit_link_post")
 async def edit_link_post(request: Request, 
-                         keyword: str, 
+                         keyword: str, # Original keyword from path
                          url: str = Form(...), 
-                         new_keyword: str = Form(..., alias="keyword"), 
+                         new_keyword: str = Form(..., alias="keyword"), # New keyword from form
                          title: Optional[str] = Form(None),
-                         user_id: str = Depends(get_current_user_or_redirect)): 
-    
-    original_keyword_lookup = sanitize_keyword(keyword) 
+                         user_id: str = Depends(get_current_user_or_redirect),
+                         _=Depends(verify_csrf_token)): # Add CSRF dependency
+    # Sanitize original keyword from path less strictly for potential use in redirect URL
+    original_keyword_lookup = sanitize_keyword(keyword) # False default
     
     new_url_strip = url.strip()
     new_keyword_strip = new_keyword.strip()
@@ -1771,5 +1847,4 @@ async def admin_ajax_handler(request: Request, user_id: str = Depends(get_curren
         status_code = 400
 
     return JSONResponse(content=response_data, status_code=status_code)
-
 

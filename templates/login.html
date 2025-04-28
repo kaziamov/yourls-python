@@ -24,6 +24,7 @@
         {% endwith %}
 
         <form method="post" action="{{ url_for('login_post') }}">
+            <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
             <div class="field">
                 <label class="label" for="username">Username</label>
                 <div class="control">

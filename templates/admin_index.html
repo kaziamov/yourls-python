@@ -27,17 +27,20 @@
 
     {# Add New Link form - Using original YOURLS structure #}
     <div id="new_url">
-      <form id="new_url_form" method="post" action="{{ url_for('admin_index_post') }}">
-        <p>
-            <label for="url">Enter the URL:</label> {# TODO: i18n #}
-            <input type="text" id="url" name="url" size="70" required class="text" />
-            <label for="keyword" class="label_keyword">Optional: Custom short URL:</label> {# TODO: i18n #}
-            <input type="text" id="keyword" name="keyword" size="20" class="text" /> 
-            {# Title field might not be in the default simple view, add if needed #}
-            {# <label for="title">Title:</label><input type="text" id="title" name="title" size="40" class="text" /> #}
-            <button type="submit" id="add-button" class="button">Shorten The URL</button> {# TODO: i18n #}
-        </p>
-      </form>
+      <div>
+        <form id="new_url_form" method="post" action="{{ url_for('admin_index_post') }}">
+          <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+          <p>
+              <label for="url">Enter the URL:</label> {# TODO: i18n #}
+              <input type="text" id="url" name="url" size="70" required class="text" />
+              <label for="keyword" class="label_keyword">Optional: Custom short URL:</label> {# TODO: i18n #}
+              <input type="text" id="keyword" name="keyword" size="20" class="text" /> 
+              {# Title field might not be in the default simple view, add if needed #}
+              {# <label for="title">Title:</label><input type="text" id="title" name="title" size="40" class="text" /> #}
+              <button type="submit" id="add-button" class="button">Shorten The URL</button> {# TODO: i18n #}
+          </p>
+        </form>
+      </div>
     </div>
 
     {# Hidden share box - Placeholder #}
@@ -124,8 +127,8 @@
                                 
                                 {# Delete Form #}
                                 <form method="post" action="{{ url_for('delete_link', keyword=link.keyword) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this link?');">
-                                    {# CSRF token could be added here for extra security #}
-                                    <button type="submit" class="action-button delete-button">Delete</button> {# TODO: i18n #}
+                                    <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+                                    <button type="submit" class="action-button delete-button">Delete</button>
                                 </form>
                             </td>
                         </tr>

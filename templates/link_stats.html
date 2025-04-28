@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Link Stats: {{ link.keyword }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Statistics for Short URL: <a href="{{ link.shorturl }}" target="_blank">{{ link.shorturl }}</a></h2>
+    <p><strong>Original URL:</strong> <a href="{{ link.url }}" title="{{ link.url }}" target="_blank">{{ link.url | truncate(75) }}</a></p>
+    <p><strong>Title:</strong> {{ link.title if link.title else '(No title)' }}</p>
+    <p><strong>Created:</strong> {{ link.date | dateformat }}</p>
+    <p><strong>Creator IP:</strong> {{ link.ip }}</p>
+    <p><strong>Total Clicks:</strong> {{ link.clicks | numberformat }}</p>
+
+    <hr>
+
+    <h3>Clicks by Country</h3>
+    {% if country_stats %}
+        <table class="table table-sm table-striped">
+            <thead>
+                <tr>
+                    <th>Country Code</th>
+                    <th>Clicks</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for code, count in country_stats.items() %}
+                <tr>
+                    <td>{{ code }}</td>
+                    <td>{{ count | numberformat }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No country data available.</p>
+    {% endif %}
+
+    <hr>
+
+    <h3>Recent Click History (Last 20)</h3>
+    {% if click_history %}
+        <table class="table table-sm table-striped">
+            <thead>
+                <tr>
+                    <th>Time (UTC)</th>
+                    <th>Referrer</th>
+                    <th>User Agent</th>
+                    <th>IP Address</th>
+                    <th>Country</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for click in click_history %}
+                <tr>
+                    <td>{{ click.click_time | dateformat }}</td>
+                    <td>{% if click.referrer and click.referrer != 'direct' %}<a href="{{ click.referrer }}" target="_blank" title="{{ click.referrer }}">{{ click.referrer | truncate(50) }}</a>{% else %}Direct{% endif %}</td>
+                    <td title="{{ click.user_agent }}">{{ click.user_agent | truncate(50) }}</td>
+                    <td>{{ click.ip_address }}</td>
+                    <td>{{ click.country_code if click.country_code else 'N/A' }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No recent click history available.</p>
+    {% endif %}
+
+</div>
+{% endblock %} 
