@@ -1,0 +1,36 @@
+{# Partial template for the inline link editing form #}
+<tr id="edit-{{ id }}" class="edit_link" style="display: none;"> {# Initially hidden, shown by JS #}
+    <td colspan="6">
+        <form id="edit_form_{{ id }}" action="javascript:edit_link_save({{ id }});">
+            <input type="hidden" id="old_keyword_{{ id }}" value="{{ link.keyword }}" />
+            <input type="hidden" id="nonce_{{ id }}" value="{{ save_nonce }}" />
+            <table class="edit_table">
+                <tbody>
+                    <tr>
+                        <td class="shorturl">Short URL:</td>
+                        <td>{{ request.base_url }}{{ link.keyword }}</td>
+                    </tr>
+                    <tr>
+                        <td class="edit_label"><label for="edit-url-{{ id }}">Original URL:</label></td>
+                        <td><input type="text" id="edit-url-{{ id }}" name="url" value="{{ link.url }}" class="text" size="70" /></td>
+                    </tr>
+                    <tr>
+                        <td class="edit_label"><label for="edit-keyword-{{ id }}">Custom Short URL:</label></td>
+                        <td>{{ request.base_url }}<input type="text" id="edit-keyword-{{ id }}" name="keyword" value="{{ link.keyword }}" class="text" size="20" /></td>
+                    </tr>
+                    <tr>
+                        <td class="edit_label"><label for="edit-title-{{ id }}">Title:</label></td>
+                        <td><input type="text" id="edit-title-{{ id }}" name="title" value="{{ link.title or '' }}" class="text" size="70" /></td>
+                    </tr>
+                    <tr>
+                        <td></td>
+                        <td>
+                            <input type="button" id="edit-submit-{{ id }}" name="save" value="Save" class="button" onclick="edit_link_save({{ id }});" />
+                            <input type="button" id="edit-close-{{ id }}" name="cancel" value="Cancel" class="button" onclick="edit_link_hide({{ id }});" />
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </form>
+    </td>
+</tr> 

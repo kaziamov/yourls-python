@@ -37,8 +37,8 @@
             {% if request.session.get('user_id') %}
                 {# User is logged in #}
                 <li id="admin_menu_logout_link">Hello admin (<a href="{{ request.url_for('logout') }}">Logout</a>)</li> {# Simple user display #}
-                <li id="admin_menu_admin_link" class="admin_menu_toplevel"><a href="/" title="Go to the admin interface">Admin interface</a></li> {# Use static root path #}
-                <li id="admin_menu_tools_link" class="admin_menu_toplevel"><a href="#" >Tools</a></li>
+                <li id="admin_menu_admin_link" class="admin_menu_toplevel"><a href="{{ request.url_for('admin_index_get') }}" title="Go to the admin interface">Admin interface</a></li> {# Use url_for #}
+                <li id="admin_menu_tools_link" class="admin_menu_toplevel"><a href="{{ request.url_for('tools_get') }}" >Tools</a></li> {# Use url_for #}
                 <li id="admin_menu_plugins_link" class="admin_menu_toplevel"><a href="#" >Manage Plugins</a></li>
                 <li id="admin_menu_help_link"><a href="#">Help</a></li>
             {% else %}

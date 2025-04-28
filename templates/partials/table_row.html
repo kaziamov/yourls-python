@@ -1,0 +1,29 @@
+{# Partial template for rendering a single link row in the admin table #}
+{% set shorturl = request.url_for('redirect_link', keyword=link.keyword) %}
+{% set statsurl = request.url_for('link_stats', keyword=link.keyword) %}
+{# Note: id is passed from the AJAX call, might be 'new' initially #}
+<tr id="id-{{ id }}" class="link_row even"> {# Class 'even'/'odd' will be handled by zebra_table() JS #}
+    <td id="keyword-{{ id }}" class="keyword">
+        <a href="{{ shorturl }}" title="{{ shorturl }}">{{ link.keyword }}</a>
+        <input type="hidden" id="keyword_{{ id }}" value="{{ link.keyword }}" />
+        <input type="hidden" id="old_keyword_{{ id }}" value="{{ link.keyword }}" /> {# For edit functionality #}
+    </td>
+    <td id="url-{{ id }}" class="url">
+        {% if link.title %}
+        <a href="{{ link.url }}" title="{{ link.title }}">{{ link.title | truncate(50) }}</a><br />
+        <small><a href="{{ link.url }}">{{ link.url | url_truncate(70) }}</a></small> {# Assuming url_truncate filter exists or needs to be added #}
+        {% else %}
+        <a href="{{ link.url }}" title="{{ link.url }}">{{ link.url | url_truncate(70) }}</a> {# Assuming url_truncate filter exists or needs to be added #}
+        {% endif %}
+    </td>
+    <td id="timestamp-{{ id }}" class="timestamp">{{ link.date | dateformat }}</td>
+    <td id="ip-{{ id }}" class="ip">{{ link.ip }}</td>
+    <td id="clicks-{{ id }}" class="clicks">{{ link.clicks | numberformat }}</td>
+    <td id="actions-{{ id }}" class="actions">
+        {# Assuming create_nonce is available in template context via app.py #}
+        <a href="{{ request.url_for('edit_link', keyword=link.keyword) }}?nonce={{ edit_nonce }}" id="edit-button-{{ id }}" class="button button_edit" title="Edit">Edit</a>
+        <a href="{{ request.url_for('delete_link', keyword=link.keyword) }}?nonce={{ delete_nonce }}" id="delete-button-{{ id }}" class="button button_delete" title="Delete">Delete</a>
+        <a href="#" onclick="toggle_share({{ id }}); return false;" id="share-button-{{ id }}" class="button button_share" title="Share">Share</a>
+        <a href="{{ statsurl }}" id="statlink-{{ id }}" class="button button_stats" title="Stats">Stats</a>
+    </td>
+</tr> 
