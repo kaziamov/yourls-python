@@ -143,16 +143,29 @@
                                     <input type="text" id="search" name="search" size="12" value="{{ search or '' }}" class="text"> 
                                     in 
                                     <select id="search_in" name="search_in">
-                                        {# TODO: Add 'all' option? Check YOURLS source #}
+                                        <option value="all" {% if search_in == 'all' %}selected{% endif %}>All fields</option>
                                         <option value="keyword" {% if search_in == 'keyword' %}selected{% endif %}>Short URL</option>
                                         <option value="url" {% if search_in == 'url' %}selected{% endif %}>URL</option>
                                         <option value="title" {% if search_in == 'title' %}selected{% endif %}>Title</option>
                                         <option value="ip" {% if search_in == 'ip' %}selected{% endif %}>IP Address</option>
                                     </select>.
-                                    {# TODO: Add click filter #}
-                                    {# Show links with <select...><option>more</option>...</select> than <input...> clicks #}
-                                    {# TODO: Add date filter #}
-                                    {# Show links created <select...><option>before</option>...</select> <input type="date"...> #}
+                                    Show links with 
+                                    <select id="click_filter" name="click_filter">
+                                        <option value="more" {% if click_filter == 'more' %}selected{% endif %}>more</option>
+                                        <option value="less" {% if click_filter == 'less' %}selected{% endif %}>less</option>
+                                    </select> 
+                                    than <input type="text" id="click_limit" name="click_limit" size="5" value="{{ click_limit or '' }}" class="text"> clicks.
+                                </p>
+                                <p>
+                                    Show links created 
+                                    <select id="date_filter" name="date_filter">
+                                        <option value="before" {% if date_filter == 'before' %}selected{% endif %}>before</option>
+                                        <option value="after" {% if date_filter == 'after' %}selected{% endif %}>after</option>
+                                        <option value="between" {% if date_filter == 'between' %}selected{% endif %}>between</option>
+                                    </select> 
+                                    <input type="text" id="date_first" name="date_first" size="12" value="{{ date_first or '' }}" class="text datepicker">
+                                    <span id="date_and" {% if date_filter != 'between' %}style="display:none;"{% endif %}> &amp; </span>
+                                    <input type="text" id="date_second" name="date_second" size="12" value="{{ date_second or '' }}" class="text datepicker" {% if date_filter != 'between' %}style="display:none;"{% endif %}>
                                 </p>
                                 <p>
                                     Order by 
@@ -170,8 +183,8 @@
                                     Show 
                                     <input type="text" id="perpage" name="perpage" size="3" value="{{ perpage }}" class="text"> 
                                     rows.
-                                    <button type="submit" id="filter-button" class="button">Search</button> {# TODO: i18n #}
-                                    {# Add Clear button? <a href="...">Clear</a> #}
+                                    <button type="submit" id="filter-button" class="button primary">Search</button>
+                                    <a href="{{ url_for('admin_index') }}" id="clear-button" class="button">Clear</a>
                                 </p>
                             </div>
                         </form>

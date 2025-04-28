@@ -10,7 +10,8 @@
     {# CSS Files - Added tablesorter.css #}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tablesorter.css') }}">
-    {# TODO: Add other CSS conditionally? (share.css, cal.css) #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cal.css') }}">
+    {# TODO: Add other CSS conditionally? (share.css) #}
     {% block head_extra %}{% endblock %}
 
     {# JS Files - Ensure correct order and inclusion #}
@@ -18,7 +19,8 @@
     <script src="{{ url_for('static', filename='js/common.js') }}"></script>
     <script src="{{ url_for('static', filename='js/jquery.notifybar.js') }}"></script>
     <script src="{{ url_for('static', filename='js/jquery.tablesorter.min.js') }}"></script> {# Original uses jquery-3.tablesorter.min.js #}
-    {# TODO: Add tablesorte.js, insert.js, share.js, clipboard.min.js, jquery.cal.js conditionally? #}
+    <script src="{{ url_for('static', filename='js/jquery.cal.js') }}"></script>
+    {# TODO: Add tablesorte.js, insert.js, share.js, clipboard.min.js conditionally? #}
 </head>
 <body class="{{ body_class or 'desktop' }}"> {# Added body class variable #}
 <div id="wrap">
@@ -84,6 +86,17 @@ $(document).ready(function() {
                 [($('.tblSorter thead th').length - 1)] : { sorter: false }
             } 
          }); 
+    }
+    // Init Calendar Inputs (if they exist)
+    if (typeof $.fn.simpleDatePickr !== 'undefined') {
+        $('#date_first, #date_second').simpleDatePickr({
+            // Options based on jquery.cal.js usage, might need adjustment
+            // Assuming l10n variables are globally defined (as in original example)
+            months : l10n_cal_month, 
+            days : l10n_cal_days, 
+            today : l10n_cal_today, 
+            close : l10n_cal_close
+        });
     }
     // Make sure feedback div is visible if messages exist
     if ($('#feedback').children().length > 0) {

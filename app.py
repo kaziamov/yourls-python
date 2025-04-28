@@ -158,7 +158,7 @@ def get_admin_index_data(args):
     try:
         cursor = conn.cursor(dictionary=True)
 
-        # --- Get Parameters ---
+        # --- Get Parameters (including new filters) ---
         try:
             page = int(args.get('page', '1'))
             if page < 1: page = 1
@@ -186,11 +186,29 @@ def get_admin_index_data(args):
         # TODO: Implement other filters (clicks, date)
         filter_param = args.get('filter', '') # Example for future use
 
+        click_filter = args.get('click_filter', 'more').lower()
+        if click_filter not in {'more', 'less'}:
+            click_filter = 'more'
+        try:
+            click_limit_str = args.get('click_limit', '').strip()
+            click_limit = int(click_limit_str) if click_limit_str else None
+        except ValueError:
+            click_limit = None
+
+        date_filter = args.get('date_filter', '').lower()
+        # Basic date validation (YYYY-MM-DD) - can be improved
+        date_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+        date_first_str = args.get('date_first', '').strip()
+        date_first = date_first_str if date_pattern.match(date_first_str) else None
+        date_second_str = args.get('date_second', '').strip()
+        date_second = date_second_str if date_pattern.match(date_second_str) else None
+
         # --- Build Query ---        
         where_clauses = []
         bind_params = {}
-
         search_sentence = ''
+
+        # Search filter
         if search:
             search_term_like = f"%{search}%"
             if search_in == 'all': # Based on YOURLS PHP logic
@@ -208,14 +226,39 @@ def get_admin_index_data(args):
                  bind_params['search'] = search_term_like
                  search_sentence = f"Searching for \"{search}\" in keyword (default)."
 
-        # TODO: Add WHERE clauses for date filters, click filters here
+        # Click filter
+        if click_limit is not None:
+            operator = '>' if click_filter == 'more' else '<'
+            # Need to bind click_limit safely
+            where_clauses.append(f"clicks {operator} %(click_limit)s")
+            bind_params['click_limit'] = click_limit
+
+        # Date filter
+        if date_filter in {'before', 'after', 'between'} and date_first:
+            if date_filter == 'before':
+                where_clauses.append("DATE(timestamp) < %(date_first)s")
+                bind_params['date_first'] = date_first
+            elif date_filter == 'after':
+                where_clauses.append("DATE(timestamp) > %(date_first)s")
+                bind_params['date_first'] = date_first
+            elif date_filter == 'between' and date_second:
+                # Ensure date_first <= date_second? Or let DB handle it?
+                where_clauses.append("DATE(timestamp) BETWEEN %(date_first)s AND %(date_second)s")
+                bind_params['date_first'] = date_first
+                bind_params['date_second'] = date_second
+            elif date_filter == 'between': # date_second was missing or invalid
+                # Ignore the filter or default to 'after date_first'? Ignore for now.
+                date_filter = '' # Reset date_filter if invalid for 'between'
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        # Need to add WHERE keyword before the conditions
+        where_sql = f"WHERE {where_sql}" 
+        
         order_by_sql = f"ORDER BY `{sort_by}` {sort_order}"
 
         # --- Execute Queries ---
         # Get total items matching the filter
-        count_query = f"SELECT COUNT(*) as count FROM yourls_url WHERE {where_sql}"
+        count_query = f"SELECT COUNT(*) as count FROM yourls_url {where_sql}"
         cursor.execute(count_query, bind_params)
         total_items_result = cursor.fetchone()
         total_items = total_items_result['count'] if total_items_result else 0
@@ -227,7 +270,8 @@ def get_admin_index_data(args):
         offset = (page - 1) * perpage
 
         # Get the links data for the current page
-        data_query = f"SELECT keyword, url, title, timestamp, clicks FROM yourls_url WHERE {where_sql} {order_by_sql} LIMIT %(limit)s OFFSET %(offset)s"
+        data_query = f"SELECT keyword, url, title, timestamp, clicks FROM yourls_url {where_sql} {order_by_sql} LIMIT %(limit)s OFFSET %(offset)s"
+        # Update bind_params with limit and offset before executing data_query
         bind_params['limit'] = perpage
         bind_params['offset'] = offset
         cursor.execute(data_query, bind_params)
@@ -239,7 +283,7 @@ def get_admin_index_data(args):
         total_urls = stats['count'] if stats and stats['count'] is not None else 0
         total_clicks = stats['clicks_sum'] if stats and stats['clicks_sum'] is not None else 0
 
-        # --- Prepare Context ---
+        # --- Prepare Context (include new filter values) ---
         context = {
             'page_title': 'YOURLS Admin',
             'links': links,
@@ -257,7 +301,12 @@ def get_admin_index_data(args):
             'search': search,
             'search_in': search_in,
             'search_sentence': search_sentence,
-            'filter': filter_param # Pass filter back to template
+            'filter': filter_param, # Pass filter back to template
+            'click_filter': click_filter,
+            'click_limit': click_limit_str, # Pass original string back
+            'date_filter': date_filter,
+            'date_first': date_first_str, # Pass original string back
+            'date_second': date_second_str, # Pass original string back
         }
 
     except Error as e:
