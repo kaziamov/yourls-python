@@ -4,6 +4,7 @@ jinja2>=3.0
 mysql-connector-python>=8.0
 python-dotenv>=0.19
 python-multipart>=0.0.20
+itsdangerous>=2.2.0
 
 [test]
 pytest>=7.0

@@ -11,8 +11,6 @@ COPY pyproject.toml uv.lock /app/
 
 RUN uv sync
 
-COPY . /app
-
 EXPOSE 8000
 
 CMD ["sleep", "infinity"]

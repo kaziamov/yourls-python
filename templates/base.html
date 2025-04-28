@@ -26,22 +26,38 @@
 <div id="wrap">
     <header role="banner"> {# Added role #}
         <h1 id="logo">
-            <a href="{{ request.url_for('admin_index_get') }}" title="YOURLS"><span>YOURLS</span>: <span>Y</span>our <span>O</span>wn <span>URL</span> <span>S</span>hortener<br/>
+            <a href="/" title="YOURLS"><span>YOURLS</span>: <span>Y</span>our <span>O</span>wn <span>URL</span> <span>S</span>hortener<br/> {# Use static root path #}
             <img src="{{ url_for('images', path='/yourls-logo.svg') }}" id="yourls-logo" alt="YOURLS" title="YOURLS" /></a>
         </h1>
     </header>
-    <nav role="navigation"> {# Added role #}
+    <nav role="navigation">
         <ul id="admin_menu">
-            {# Removed login/logout logic - show default logged-in menu for now #}
-            <li id="admin_menu_logout_link">Hello admin (Logout - disabled)</li> {# Placeholder #}
-            <li id="admin_menu_admin_link" class="admin_menu_toplevel"><a href="{{ request.url_for('admin_index_get') }}" title="Go to the admin interface">Admin interface</a></li>
-            <li id="admin_menu_tools_link" class="admin_menu_toplevel"><a href="#" >Tools</a></li>
-            <li id="admin_menu_plugins_link" class="admin_menu_toplevel"><a href="#" >Manage Plugins</a></li>
-            <li id="admin_menu_help_link"><a href="#">Help</a></li> {# TODO: Link to readme? #}
+            {% if request.session.get('user_id') %}
+                {# User is logged in #}
+                <li id="admin_menu_logout_link">Hello admin (<a href="{{ request.url_for('logout') }}">Logout</a>)</li> {# Simple user display #}
+                <li id="admin_menu_admin_link" class="admin_menu_toplevel"><a href="/" title="Go to the admin interface">Admin interface</a></li> {# Use static root path #}
+                <li id="admin_menu_tools_link" class="admin_menu_toplevel"><a href="#" >Tools</a></li>
+                <li id="admin_menu_plugins_link" class="admin_menu_toplevel"><a href="#" >Manage Plugins</a></li>
+                <li id="admin_menu_help_link"><a href="#">Help</a></li>
+            {% else %}
+                {# User is logged out #}
+                 <li id="admin_menu_login_link"><a href="{{ request.url_for('login_get') }}">Login</a></li>
+                 {# <li id="admin_menu_help_link"><a href="#">Help</a></li> #}
+            {% endif %}
         </ul>
     </nav>
 
-    {# Removed the #content wrapper, main is direct child of #wrap now #}
+    {# Display Notifications (Replaces Flash) #}
+    {% set notifications = get_notifications(request) %}
+    {% if notifications %}
+    <div id="feedback" class="feedback" style="display: block;">
+      {% for notification in notifications %}
+        <div class="{{ notification.category }}"><p>{{ notification.message }}</p></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {# End Notifications #}
+
     <main role="main"> {# Added role #}
         {% block content %}
         {# Page specific content will go here #}

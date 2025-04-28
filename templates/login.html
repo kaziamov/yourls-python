@@ -10,12 +10,26 @@
         {# Display flashed messages specifically for login page if needed #}
         {# {% with messages = get_flashed_messages(with_categories=true, category_filter=['error','info']) %} ... {% endwith %} #}
 
-        <h2>Login Required</h2>
-        <form method="post" action="{{ url_for('login') }}">
-            <p>
-                <label for="username">Username:</label>
-                <input type="text" name="username" id="username" class="text" required autofocus>
-            </p>
+        <h2>Login</h2>
+
+        <!-- Display notifications -->
+        {% with messages = get_notifications(request) %}
+          {% if messages %}
+            <div class="notifications">
+              {% for message in messages %}
+                <div class="notification is-{{ message.category }}">{{ message.message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <form method="post" action="{{ url_for('login_post') }}">
+            <div class="field">
+                <label class="label" for="username">Username</label>
+                <div class="control">
+                    <input class="input" type="text" id="username" name="username" required>
+                </div>
+            </div>
             <p>
                 <label for="password">Password:</label>
                 <input type="password" name="password" id="password" class="text" required>

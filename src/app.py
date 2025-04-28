@@ -4,7 +4,8 @@ import math
 import random
 import string
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request, Depends, Form, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -13,10 +14,19 @@ from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 import mysql.connector
 from mysql.connector import Error
+from starlette.middleware.sessions import SessionMiddleware
 
 
 load_dotenv() 
 app = FastAPI(title="YOURLS Python Adapter (FastAPI)")
+
+# Add Session Middleware
+# Ensure FLASK_SECRET_KEY (or a new SESSION_SECRET_KEY) is set in .env
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=os.getenv('SESSION_SECRET_KEY', 'fallback-insecure-key'),
+    # Options: session_cookie, max_age, same_site, https_only
+)
 
 
 def get_db_connection():
@@ -71,14 +81,48 @@ def format_datetime(value, format='%Y-%m-%d %H:%M'):
     if isinstance(value, datetime):
         return value.strftime(format)
     try:
+        # Attempt to parse if it's a string that might be a timestamp
+        # Simple check, might need more robust parsing based on actual data
         dt_object = datetime.fromisoformat(str(value))
         return dt_object.strftime(format)
     except (ValueError, TypeError):
-        return str(value)
+        return str(value) # Fallback to string representation
+
+
+def generate_sort_url(request: Request, column: str, current_sort_by: str, current_sort_order: str) -> str:
+    """Generates a URL for sorting the admin table.
+
+    Args:
+        request: The current request object.
+        column: The column to sort by.
+        current_sort_by: The currently active sort column.
+        current_sort_order: The currently active sort order ('ASC' or 'DESC').
+
+    Returns:
+        A URL string for the admin index with updated sorting parameters.
+    """
+    params = dict(request.query_params) # Get a mutable copy
+    new_sort_order = 'ASC'
+    if column == current_sort_by:
+        # Toggle order if clicking the currently sorted column
+        new_sort_order = 'DESC' if current_sort_order == 'ASC' else 'ASC'
+    
+    params['sort_by'] = column
+    params['sort_order'] = new_sort_order
+    
+    # Remove None values which urlencode might handle differently
+    params = {k: v for k, v in params.items() if v is not None}
+
+    # Use request.url_for to build the base path and add query params manually
+    # request.url_for doesn't easily handle merging existing query params with new ones
+    base_url = request.url_for('admin_index_get')
+    query_string = urlencode(params)
+    return f"{base_url}?{query_string}"
 
 
 templates.env.filters['numberformat'] = simple_number_format
 templates.env.filters['dateformat'] = format_datetime
+templates.env.globals['sort_url'] = generate_sort_url # Make the function available in templates
 
 
 
@@ -236,21 +280,113 @@ def get_admin_index_data(query_params: dict) -> Dict[str, Any]:
 
 
 
-@app.get("/", response_class=HTMLResponse, name="admin_index")
-async def admin_index_get(request: Request):
-    context = get_admin_index_data(request.query_params)
-    
-    context["request"] = request 
-    
-    context["request_args"] = request.query_params 
-    return templates.TemplateResponse("admin_index.html", context)
+# --- Notification Helpers ---
 
+def add_notification(request: Request, message: str, category: str = "info"):
+    """Adds a notification message to the session."""
+    if "_notifications" not in request.session:
+        request.session["_notifications"] = []
+    request.session["_notifications"].append({"message": message, "category": category})
+
+def get_notifications(request: Request) -> List[Dict[str, str]]:
+    """Retrieves and clears notification messages from the session."""
+    messages = request.session.pop("_notifications", [])
+    return messages
+
+# Add get_notifications to Jinja2 globals so it's available in all templates
+templates.env.globals['get_notifications'] = get_notifications
+
+# --- Authentication Helpers ---
+
+# Simple user store (plain text password - NOT RECOMMENDED)
+ADMIN_USERNAME_STORE = os.getenv('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD_STORE = os.getenv('ADMIN_PASSWORD')
+
+# Dependency to check if user is logged in via session
+async def get_current_user_or_redirect(request: Request):
+    user_id = request.session.get('user_id')
+    if not user_id:
+        # Store the URL they were trying to access, so we can redirect back
+        next_url = str(request.url) # Ensure next_url is also a string
+        # Convert URL object to string before concatenation
+        login_url_base = str(request.url_for('login_get'))
+        login_url = login_url_base + f"?next={next_url}"
+        # Redirect to login page
+        raise HTTPException(
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT, 
+            detail="Not authenticated",
+            headers={"Location": login_url}
+        )
+    # You could potentially load more user details here if needed
+    # For now, just knowing they are logged in is enough
+    return user_id 
+
+# --- Routes (FastAPI syntax) ---
+
+@app.get("/login", response_class=HTMLResponse, name="login_get")
+async def login_get(request: Request):
+    # If already logged in, redirect to index
+    if request.session.get('user_id'):
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.post("/login", response_class=RedirectResponse, name="login_post")
+async def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
+    # Simple validation (NOT RECOMMENDED - use hashing)
+    if username == ADMIN_USERNAME_STORE and ADMIN_PASSWORD_STORE and password == ADMIN_PASSWORD_STORE:
+        # Set user ID in session
+        request.session['user_id'] = 'admin' # Use a simple identifier
+        add_notification(request, "Logged in successfully.", "success") # Use notification
+        
+        # Redirect to originally requested page or index
+        next_url = request.query_params.get('next', str(request.url_for('admin_index_get'))) # Ensure default is also string if used directly
+        # Basic validation for open redirect vulnerability
+        if not next_url.startswith('/') and not next_url.startswith(str(request.base_url)):
+             next_url = str(request.url_for('admin_index_get')) # Convert to string
+        return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
+    else:
+        add_notification(request, "Invalid username or password.", "error") # Use notification
+        # Redirect back to login page, maybe with an error param?
+        # How to show error without flash? Query param is one way:
+        login_url_base = str(request.url_for('login_get')) # Convert to string
+        login_url = login_url_base + "?error=1"
+        return RedirectResponse(url=login_url, status_code=status.HTTP_302_FOUND)
+
+@app.get("/logout", response_class=RedirectResponse, name="logout")
+async def logout(request: Request):
+    request.session.clear()
+    add_notification(request, "You have been logged out.", "success") # Use notification
+    # Redirect to login page, maybe with a success param?
+    login_url_base = str(request.url_for('login_get')) # Convert to string
+    login_url = login_url_base + "?logged_out=1"
+    return RedirectResponse(url=login_url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+# --- Protected Routes (using Depends) ---
+
+@app.get("/", response_class=HTMLResponse, name="admin_index_get")
+async def admin_index_get(request: Request, user_id: str = Depends(get_current_user_or_redirect)):
+    context = get_admin_index_data(request.query_params)
+    context["request"] = request
+    context["request_args"] = request.query_params 
+    context["current_user_id"] = user_id 
+    
+    # --- DEBUGGING --- 
+    try:
+        test_url = request.url_for('admin_index_get')
+        print(f"DEBUG: url_for('admin_index_get') inside route handler generated: {test_url}")
+    except Exception as e:
+        print(f"ERROR: url_for('admin_index_get') failed inside route handler: {e}")
+    # --- END DEBUGGING ---
+    
+    return templates.TemplateResponse("admin_index.html", context)
 
 @app.post("/", response_class=RedirectResponse, name="admin_index_post")
 async def admin_index_post(request: Request, 
                          url: str = Form(...), 
                          keyword: Optional[str] = Form(None), 
-                         title: Optional[str] = Form(None)):
+                         title: Optional[str] = Form(None),
+                         user_id: str = Depends(get_current_user_or_redirect)): # Protect POST
     long_url = url.strip()
     custom_keyword = keyword.strip() if keyword else ""
     link_title = title.strip() if title else "" 
@@ -259,10 +395,10 @@ async def admin_index_post(request: Request,
     if not long_url:
         
         print("Error: URL is required.")
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
     if not long_url.lower().startswith(('http://', 'https://')):
         print("Error: URL must start with http:// or https://.")
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
     keyword_to_insert = sanitize_keyword(custom_keyword)
     if not keyword_to_insert:
@@ -270,13 +406,13 @@ async def admin_index_post(request: Request,
 
     if not keyword_to_insert:
          print("Error: Could not generate a valid keyword.")
-         return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+         return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
     ip_address = request.client.host
     conn = get_db_connection()
     if not conn:
          print("Error: Database connection failed.")
-         return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+         return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
     
     cursor = None
     try:
@@ -285,31 +421,32 @@ async def admin_index_post(request: Request,
         data = {'keyword': keyword_to_insert, 'url': long_url, 'title': link_title if link_title else None, 'ip': ip_address}
         cursor.execute(insert_query, data)
         conn.commit()
-        print(f"Short URL created: {keyword_to_insert}") 
+        add_notification(request, f'Short URL created: {keyword_to_insert}', 'success')
     except Error as err:
         conn.rollback()
         if err.errno == 1062:
-            print(f"""Error: Keyword "{keyword_to_insert}" already exists.""")
+            add_notification(request, f'Error: Keyword "{keyword_to_insert}" already exists.', 'error')
         else:
-            print(f"Database Error: {err}")
+            add_notification(request, f'Database Error: {err}', 'error')
+            print(f"DB Error: {err}") # Keep print for server logs
     finally:
         if cursor: cursor.close()
         if conn and conn.is_connected(): conn.close()
 
     
-    return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/delete/{keyword}", response_class=RedirectResponse, name="delete_link")
-async def delete_link_post(request: Request, keyword: str):
+async def delete_link_post(request: Request, keyword: str, user_id: str = Depends(get_current_user_or_redirect)): # Protect
     if not keyword: 
         print("Error: Invalid keyword for deletion.")
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
     conn = get_db_connection()
     if not conn: 
         print("Error: Database connection failed.")
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
     cursor = None
     try:
@@ -318,28 +455,31 @@ async def delete_link_post(request: Request, keyword: str):
         cursor.execute(delete_query, {'keyword': keyword})
         affected_rows = cursor.rowcount
         conn.commit()
-        if affected_rows > 0: print(f'Link "{keyword}" deleted.')
-        else: print(f'Link "{keyword}" not found.')
+        if affected_rows > 0: 
+            add_notification(request, f'Link "{keyword}" deleted.', 'success')
+        else: 
+            add_notification(request, f'Link "{keyword}" not found.', 'warning')
     except Error as e:
         conn.rollback()
-        print(f'Database error during deletion: {e}')
+        add_notification(request, f'Database error during deletion: {e}', 'error')
+        print(f"DB Error (Delete): {e}") # Keep print for server logs
     finally:
         if cursor: cursor.close()
         if conn and conn.is_connected(): conn.close()
     
-    return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
 
 @app.get("/stats/{keyword}", response_class=HTMLResponse, name="link_stats")
-async def link_stats_get(request: Request, keyword: str):
+async def link_stats_get(request: Request, keyword: str, user_id: str = Depends(get_current_user_or_redirect)): # Protect
     sanitized_keyword = sanitize_keyword(keyword)
     if not sanitized_keyword: 
         print(f"Invalid keyword format: {keyword}")
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
     conn = get_db_connection()
     if not conn: 
         print("Error: Database connection failed.")
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
     cursor = None
     link_data = None
@@ -352,7 +492,7 @@ async def link_stats_get(request: Request, keyword: str):
         
         if not link_data:
             print(f'Link "{sanitized_keyword}" not found.')
-            return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+            return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
         select_logs_query = "SELECT click_time, referrer, user_agent, ip_address, country_code FROM yourls_log WHERE shorturl = %(keyword)s ORDER BY click_time DESC LIMIT 100"
         cursor.execute(select_logs_query, {'keyword': sanitized_keyword})
@@ -360,25 +500,25 @@ async def link_stats_get(request: Request, keyword: str):
 
     except Error as e:
         print(f'Database error fetching stats: {e}')
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
     finally:
         if cursor: cursor.close()
         if conn and conn.is_connected(): conn.close()
 
-    context = {"request": request, "link": link_data, "logs": click_logs}
+    context = {"request": request, "link": link_data, "logs": click_logs, "current_user_id": user_id}
     return templates.TemplateResponse('stats.html', context)
 
 @app.get("/edit/{keyword}", response_class=HTMLResponse, name="edit_link")
-async def edit_link_get(request: Request, keyword: str):
+async def edit_link_get(request: Request, keyword: str, user_id: str = Depends(get_current_user_or_redirect)): # Protect
     original_keyword = sanitize_keyword(keyword)
     if not original_keyword: 
         print(f"Invalid keyword format: {keyword}")
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
     conn = get_db_connection()
     if not conn: 
         print("Error: Database connection failed.")
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
     cursor = None
     link_data = None
@@ -390,14 +530,14 @@ async def edit_link_get(request: Request, keyword: str):
 
         if not link_data:
             print(f'Link "{original_keyword}" not found for editing.')
-            return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+            return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
         
-        context = {"request": request, "link": link_data, "original_keyword": original_keyword}
+        context = {"request": request, "link": link_data, "original_keyword": original_keyword, "current_user_id": user_id}
         return templates.TemplateResponse('edit_link.html', context)
         
     except Error as e:
         print(f'Database error accessing link {original_keyword}: {e}')
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
     finally:
         if cursor: cursor.close()
         if conn and conn.is_connected(): conn.close()
@@ -406,17 +546,17 @@ async def edit_link_get(request: Request, keyword: str):
 async def edit_link_post(request: Request, 
                          keyword: str, 
                          url: str = Form(...), 
-                         new_keyword: str = Form(..., alias="keyword"), 
-                         title: Optional[str] = Form(None)):
+                         new_keyword: str = Form(..., alias="keyword"),
+                         title: Optional[str] = Form(None),
+                         user_id: str = Depends(get_current_user_or_redirect)): # Protect
     original_keyword = sanitize_keyword(keyword)
     new_url_strip = url.strip()
     new_keyword_strip = new_keyword.strip()
     new_title_strip = title.strip() if title else ""
 
-    
     if not new_url_strip or not new_keyword_strip:
         print('Error: URL and Keyword cannot be empty.')
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
     if not new_url_strip.lower().startswith(('http://', 'https://')):
         print('Error: URL must start with http:// or https://.')
         
@@ -432,7 +572,7 @@ async def edit_link_post(request: Request,
     conn = get_db_connection()
     if not conn: 
         print("Error: Database connection failed.")
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
     cursor = None
     redirect_to_edit = False
@@ -446,19 +586,20 @@ async def edit_link_post(request: Request,
         cursor.execute(update_query, data)
         
         if cursor.rowcount == 0:
-             print(f'Error: Could not update link "{original_keyword}". It might have been deleted or new keyword exists.')
              conn.rollback()
+             add_notification(request, f'Error: Could not update link "{original_keyword}". It might have been deleted or new keyword exists.', 'error')
              redirect_to_edit = True 
         else:
             conn.commit()
-            print(f'Link "{sanitized_new_keyword}" updated.')
+            add_notification(request, f'Link "{sanitized_new_keyword}" updated.', 'success')
 
     except Error as err:
          conn.rollback()
          if err.errno == 1062:
-             print(f'Error: The new keyword "{sanitized_new_keyword}" already exists.')
+             add_notification(request, f'Error: The new keyword "{sanitized_new_keyword}" already exists.', 'error')
          else:
-             print(f'Database Error during update: {err}')
+             add_notification(request, f'Database Error during update: {err}', 'error')
+             print(f"DB Error (Update): {err}") # Keep print
          redirect_to_edit = True 
     finally:
         if cursor: cursor.close()
@@ -468,7 +609,7 @@ async def edit_link_post(request: Request,
         edit_url = request.url_for('edit_link', keyword=original_keyword)
         return RedirectResponse(url=edit_url, status_code=status.HTTP_302_FOUND)
     else:
-        return RedirectResponse(url=request.url_for('admin_index'), status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
 
 
 

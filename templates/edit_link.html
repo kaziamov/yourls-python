@@ -23,8 +23,9 @@
                 <input type="text" id="title" name="title" value="{{ link.title or '' }}" size="70">
             </div>
             <div>
-                <button type="submit">Update Link</button>
-                <a href="{{ url_for('admin_index') }}" class="cancel-button">Cancel</a>
+                <input type="hidden" name="keyword" value="{{ link.keyword }}">
+                <button type="submit" class="button primary">Save Changes</button>
+                <a href="{{ url_for('admin_index_get') }}" class="cancel-button">Cancel</a>
             </div>
         </fieldset>
       </form>
