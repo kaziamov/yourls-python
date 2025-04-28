@@ -11,7 +11,10 @@ import string
 
 load_dotenv()  # Load variables from .env file
 
-app = Flask(__name__)
+app = Flask(__name__, 
+            static_folder='.',  # Use root as static folder
+            static_url_path=''   # Serve static files from root URL path
+            )
 
 # Configure Secret Key for flash messages
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-should-be-changed')

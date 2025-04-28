@@ -4,39 +4,85 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}YOURLS Admin{% endblock %}</title>
-    {# Add links to CSS files here #}
-    <link rel="stylesheet" href="/css/style.css"> {# Example #}
+    {# YOURLS CSS Files #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {# Add other CSS links if needed, e.g., for tablesorter #}
     {% block head_extra %}{% endblock %}
 </head>
 <body>
-    <header>
-        <h1>YOURLS Admin Interface</h1>
-        {# Add navigation menu here #}
-    </header>
+<div id="wrap">
+    <div id="header">
+        <h1 id="logo"><a href="{{ url_for('admin_index') }}">
+            {# Placeholder for image replacement via CSS? Or add img tag #}
+            <span>YOURLS: Your Own URL Shortener</span> 
+        </a></h1>
+        <ul id="admin_menu">
+            {# TODO: Add proper links and implement corresponding routes/logic #}
+            <li><a href="{{ url_for('admin_index') }}">Admin Interface</a></li>
+            <li><a href="#">Tools</a></li>
+            <li><a href="#">Manage Plugins</a></li>
+            <li><a href="#">Help</a></li>
+            {# TODO: Add logout link after authentication is added #}
+            {# <li><a href="{{ url_for('logout') }}">Logout</a></li> #}
+        </ul>
+    </div>
 
     {# Display flashed messages #}
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="flashed-messages">
+        <div class="flashed-messages" style="margin-top: 20px;"> {# Added margin #}
         {% for category, message in messages %}
-          <div class="alert alert-{{ category or 'info' }}">{{ message }}</div>
+          {# Using YOURLS classes: success, error #}
+          <div id="message" class="{{ category }}"><p>{{ message }}</p></div>
         {% endfor %}
         </div>
       {% endif %}
     {% endwith %}
 
-    <main>
-        {% block content %}
-        {# Page specific content will go here #}
-        {% endblock %}
-    </main>
+    <div id="content">
+      <main>
+          {% block content %}
+          {# Page specific content will go here #}
+          {% endblock %}
+      </main>
+    </div>
 
-    <footer>
-        <p>Powered by YOURLS & Jinja2</p>
-    </footer>
+</div> {# End #wrap #}
 
-    {# Add links to JS files here #}
-    <script src="/js/script.js"></script> {# Example #}
-    {% block scripts_extra %}{% endblock %}
+<div id="footer">
+    <p>
+        {# Placeholder for version, etc. #}
+        Powered by <a href="https://yourls.org">YOURLS</a> &amp; Jinja2. 
+    </p>
+</div>
+
+{# YOURLS JS Files - Load jQuery first #}
+<script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/jquery.notifybar.js') }}"></script> {# For flash messages style? #}
+<script src="{{ url_for('static', filename='js/jquery.tablesorter.min.js') }}"></script> {# For table sorting #}
+{# TODO: Initialize tablesorter and potentially other JS #}
+<script type="text/javascript">
+$(document).ready(function() {
+    // Init table sorter (assuming the table ID will be 'main_table')
+    if ($("#main_table").length) {
+         $("#main_table").tablesorter({ 
+            // YOURLS config from common.js (approximate)
+            widgets: ['zebra'], // Add zebra striping
+            headers: { 
+                // Assign the sorter-false class to the action column header
+                5: { sorter: false } // Assuming actions is 6th col (index 5)
+            } 
+         }); 
+    }
+    // Init flash message bars (using ID from base.html)
+    if ($('#message').length) {
+        // The original uses make_message_box_movable
+        // For now, just ensure it's visible. Notifybar might apply styles automatically.
+    }
+    // Other common.js initializations might be needed
+});
+</script>
+{% block scripts_extra %}{% endblock %}
 </body>
 </html> 

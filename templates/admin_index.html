@@ -8,9 +8,9 @@
 
     {# Info about filtering/pagination #}
     {% if search_sentence %}
-        <p>{{ search_sentence | safe }}</p>
+        <p id="search_results">{{ search_sentence | safe }}</p>
     {% endif %}
-    <p>
+    <p id="stats_displaying">
         {# TODO: Implement i18n function like yourls__() #}
         Displaying <strong>{{ display_on_page }}</strong> to <strong class="increment">{{ max_on_page }}</strong> of <strong class="increment">{{ total_items }}</strong> URLs
         {% if total_items_clicks is defined and total_items_clicks is not sameas false %}
@@ -25,27 +25,18 @@
     {# Action hook placeholder #}
     {# {{ yourls_do_action('admin_page_before_form') }} #}
 
-    {# Add New Link form - Replaces Placeholder #}
-    <div id="new_url_form" class="add-url-form">
-      <form method="post" action="{{ url_for('admin_index') }}">
-        <fieldset>
-            <legend>Enter a new URL to shorten</legend> {# TODO: i18n #}
-            <div>
-                <label for="url">Long URL:</label> {# TODO: i18n #}
-                <input type="text" id="url" name="url" required size="70">
-            </div>
-            <div>
-                <label for="keyword">Custom short URL (optional):</label> {# TODO: i18n #}
-                <input type="text" id="keyword" name="keyword" size="20">
-            </div>
-            <div>
-                <label for="title">Title (optional):</label> {# TODO: i18n #}
-                <input type="text" id="title" name="title" size="70">
-            </div>
-            <div>
-                <button type="submit">Shorten The URL</button> {# TODO: i18n #}
-            </div>
-        </fieldset>
+    {# Add New Link form - Using original YOURLS structure #}
+    <div id="new_url">
+      <form id="new_url_form" method="post" action="{{ url_for('admin_index') }}">
+        <p>
+            <label for="url">Enter the URL:</label> {# TODO: i18n #}
+            <input type="text" id="url" name="url" size="70" required class="text" />
+            <label for="keyword" class="label_keyword">Optional: Custom short URL:</label> {# TODO: i18n #}
+            <input type="text" id="keyword" name="keyword" size="20" class="text" /> 
+            {# Title field might not be in the default simple view, add if needed #}
+            {# <label for="title">Title:</label><input type="text" id="title" name="title" size="40" class="text" /> #}
+            <button type="submit" id="add-button" class="button">Shorten The URL</button> {# TODO: i18n #}
+        </p>
       </form>
     </div>
 
@@ -56,9 +47,8 @@
     {# {{ yourls_do_action('admin_page_before_table') }} #}
 
     <div id="links_table">
-        {# Table Footer (Pagination/Filters) - Placeholder Removed #}
-
-        <table>
+        {# Main table with ID for styles and JS #}
+        <table id="main_table" class="tblSorter" cellpadding="0" cellspacing="1">
             <thead>
                 {# Table Header Row with Sortable Links #}
                 <tr>
@@ -137,9 +127,55 @@
                 {% endif %}
             </tbody>
             <tfoot>
-                {# Table Footer Row with Pagination #}
+                {# Table Footer Row with Pagination AND Filters/Search #}
                 <tr>
                     <td colspan="6"> {# Span across all columns #}
+                        
+                        {# Filter Form (mimicking original tfoot) #}
+                        <form id="filter_form" method="get" action="{{ url_for('admin_index') }}">
+                            <div id="filter_options">
+                                {# Preserve existing sort order when submitting filter form #}
+                                <input type="hidden" name="sort_by" value="{{ sort_by }}">
+                                <input type="hidden" name="sort_order" value="{{ sort_order }}">
+                                
+                                <p>
+                                    <label for="search">Search for</label> {# TODO: i18n #}
+                                    <input type="text" id="search" name="search" size="12" value="{{ search or '' }}" class="text"> 
+                                    in 
+                                    <select id="search_in" name="search_in">
+                                        {# TODO: Add 'all' option? Check YOURLS source #}
+                                        <option value="keyword" {% if search_in == 'keyword' %}selected{% endif %}>Short URL</option>
+                                        <option value="url" {% if search_in == 'url' %}selected{% endif %}>URL</option>
+                                        <option value="title" {% if search_in == 'title' %}selected{% endif %}>Title</option>
+                                        <option value="ip" {% if search_in == 'ip' %}selected{% endif %}>IP Address</option>
+                                    </select>.
+                                    {# TODO: Add click filter #}
+                                    {# Show links with <select...><option>more</option>...</select> than <input...> clicks #}
+                                    {# TODO: Add date filter #}
+                                    {# Show links created <select...><option>before</option>...</select> <input type="date"...> #}
+                                </p>
+                                <p>
+                                    Order by 
+                                    <select id="sort_by_select" name="sort_by">
+                                        <option value="keyword" {% if sort_by == 'keyword' %}selected{% endif %}>Short URL</option>
+                                        <option value="url" {% if sort_by == 'url' %}selected{% endif %}>URL</option>
+                                        <option value="title" {% if sort_by == 'title' %}selected{% endif %}>Title</option>
+                                        <option value="timestamp" {% if sort_by == 'timestamp' %}selected{% endif %}>Date</option>
+                                        <option value="clicks" {% if sort_by == 'clicks' %}selected{% endif %}>Clicks</option>
+                                    </select>
+                                    <select id="sort_order_select" name="sort_order">
+                                        <option value="DESC" {% if sort_order == 'DESC' %}selected{% endif %}>Descending</option>
+                                        <option value="ASC" {% if sort_order == 'ASC' %}selected{% endif %}>Ascending</option>
+                                    </select>.
+                                    Show 
+                                    <input type="text" id="perpage" name="perpage" size="3" value="{{ perpage }}" class="text"> 
+                                    rows.
+                                    <button type="submit" id="filter-button" class="button">Search</button> {# TODO: i18n #}
+                                    {# Add Clear button? <a href="...">Clear</a> #}
+                                </p>
+                            </div>
+                        </form>
+
                         <div class="pagination">
                             {% if total_pages > 1 %}
                                 {# Previous Page Link #}
@@ -167,8 +203,7 @@
                                 <span class="page_info">Page 1 of 1</span>
                             {% endif %}
                         </div>
-                        {# TODO: Add form for search/filters here or integrate with tfoot? #}
-                        {# The original YOURLS puts filters/search controls here in the tfoot #}
+                        
                     </td>
                 </tr>
             </tfoot>
