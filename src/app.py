@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, url_for, flash, redirect, abort
+from flask import Flask, render_template, request, url_for, flash, redirect, abort, jsonify
 from dotenv import load_dotenv
 import mysql.connector
 from mysql.connector import Error
@@ -8,7 +8,7 @@ import math
 import re
 import random
 import string
-from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user # Added Flask-Login imports
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 
 load_dotenv()  # Load variables from .env file
 
@@ -32,6 +32,9 @@ login_manager.login_message_category = "info" # Optional: category for flashed m
 # In-memory user store (using plain text password)
 ADMIN_USERNAME_STORE = os.getenv('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD_STORE = os.getenv('ADMIN_PASSWORD') # Reading plain password
+
+# Read API Key from environment
+API_KEY_STORE = os.getenv('API_SECRET_KEY')
 
 class User(UserMixin):
     def __init__(self, id, username):
@@ -348,6 +351,25 @@ def generate_next_keyword():
     # A simple approach might involve converting MAX(id) to base 36.
     # Or just using a random string for simplicity initially.
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+
+# --- Helper function for API responses ---
+def format_api_response(data, format='json'):
+    """Formats the API response based on the requested format."""
+    # TODO: Implement XML and Simple format based on YOURLS structure
+    if format == 'xml':
+        # Basic placeholder - Need proper XML structuring
+        xml_parts = [f"<{key}>{value}</{key}>" for key, value in data.items()]
+        return f"<result>{''.join(xml_parts)}</result>", {'Content-Type': 'application/xml'}
+    elif format == 'simple':
+        # Typically returns just the short URL on success, or an error message
+        if data.get('status') == 'success' and data.get('shorturl'):
+             return data['shorturl'], {'Content-Type': 'text/plain'}
+        else:
+             # Include code in error? Check YOURLS behavior
+             return f"ERROR: {data.get('message', 'Unknown error')}", {'Content-Type': 'text/plain'}
+    else: # Default to JSON
+        status_code = data.get('statusCode', 200 if data.get('status') == 'success' else 400)
+        return jsonify(data), status_code
 
 # --- Routes ---
 @app.route('/login', methods=['GET', 'POST'])
@@ -703,6 +725,104 @@ def edit_link(keyword):
             cursor.close()
         if conn and conn.is_connected():
             conn.close()
+
+# --- API Route ---
+@app.route('/api', methods=['GET', 'POST'])
+# @app.route('/yourls-api.php', methods=['GET', 'POST']) # Alternative for closer imitation
+def api_handler():
+    """Handles API requests."""
+    # --- Basic Authentication (API Key) ---
+    # TODO: Implement signature-based authentication for compatibility
+    api_key = request.values.get('apikey') # Use request.values to get from GET or POST
+    if not API_KEY_STORE or api_key != API_KEY_STORE:
+        # Return error in the requested format, default JSON
+        req_format = request.values.get('format', 'json').lower()
+        error_response = {
+            "status": "fail", 
+            "code": "error:auth",
+            "message": "Invalid or missing API key",
+            "statusCode": 403
+        }
+        return format_api_response(error_response, req_format)
+
+    # --- Get Action and Format ---
+    action = request.values.get('action')
+    req_format = request.values.get('format', 'json').lower()
+
+    # --- Handle Actions ---
+    if action == 'shorturl':
+        long_url = request.values.get('url', '').strip()
+        custom_keyword = request.values.get('keyword', '').strip()
+        title = request.values.get('title', '').strip()
+
+        if not long_url:
+            return format_api_response({"status": "fail", "code": "error:url", "message": "Missing URL parameter", "statusCode": 400}, req_format)
+        if not long_url.lower().startswith(('http://', 'https://')):
+            return format_api_response({"status": "fail", "code": "error:url", "message": "URL format is invalid", "statusCode": 400}, req_format)
+
+        keyword_to_insert = sanitize_keyword(custom_keyword)
+        if not keyword_to_insert:
+            keyword_to_insert = generate_next_keyword()
+            # TODO: Check if generated keyword exists and retry?
+        
+        if not keyword_to_insert: # Still failed?
+             return format_api_response({"status": "fail", "code": "error:keyword", "message": "Could not generate valid keyword", "statusCode": 500}, req_format)
+
+        ip_address = request.remote_addr # Use request IP for API call
+        
+        conn = get_db_connection()
+        if not conn:
+             return format_api_response({"status": "fail", "code": "error:db", "message": "Database connection error", "statusCode": 503}, req_format)
+        
+        cursor = None
+        try:
+            cursor = conn.cursor()
+            insert_query = "INSERT INTO yourls_url (keyword, url, title, timestamp, ip, clicks) VALUES (%(keyword)s, %(url)s, %(title)s, NOW(), %(ip)s, 0)"
+            data = {'keyword': keyword_to_insert, 'url': long_url, 'title': title if title else None, 'ip': ip_address}
+            cursor.execute(insert_query, data)
+            conn.commit()
+
+            # Build success response matching YOURLS structure
+            base_url = url_for('redirect_link', keyword='', _external=True) # Get base URL
+            shorturl_full = base_url + keyword_to_insert
+            # Need to fetch the inserted data to get timestamp?
+            # Fetching timestamp might be overkill, maybe use NOW() representation
+            # Simplified url_data for now
+            url_data = {"keyword": keyword_to_insert, "url": long_url, "title": title, "date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'), "ip": ip_address}
+            
+            success_response = {
+                "status": "success", 
+                "code": "success",
+                "url": url_data,
+                "message": f"{long_url} added to database", # Check original message format
+                "title": title,
+                "shorturl": shorturl_full,
+                "statusCode": 200
+            }
+            return format_api_response(success_response, req_format)
+
+        except mysql.connector.Error as err:
+            conn.rollback()
+            if err.errno == 1062: # Duplicate keyword
+                return format_api_response({"status": "fail", "code": "error:keyword", "message": f"Short URL {keyword_to_insert} already exists", "statusCode": 400}, req_format)
+            else:
+                print(f"DB Error (API shorturl): {err}")
+                return format_api_response({"status": "fail", "code": "error:db", "message": "Database error", "statusCode": 500}, req_format)
+        finally:
+            if cursor: cursor.close()
+            if conn and conn.is_connected(): conn.close()
+            
+    # TODO: Implement 'expand' action
+    # elif action == 'expand':
+    #     shorturl_param = request.values.get('shorturl')
+    #     # ... find long url ...
+    #     # ... format response ...
+    
+    # TODO: Implement other actions (stats, url-stats, db-stats) ...
+
+    else:
+        # Unknown action
+        return format_api_response({"status": "fail", "code": "error:action", "message": "Unknown action", "statusCode": 400}, req_format)
 
 # --- Main execution (remains the same) ---
 if __name__ == '__main__':
