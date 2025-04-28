@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Stats for {{ link.keyword }}{% endblock %}
+
+{% block content %}
+    <h2>Statistics for Short URL: {{ link.keyword }}</h2>
+
+    <div class="stats-summary">
+        <p>
+            <strong>Original URL:</strong> 
+            <a href="{{ link.url }}" title="{{ link.url }}">{{ link.url | truncate(80) }}</a>
+        </p>
+        <p>
+            <strong>Title:</strong> 
+            {{ link.title | default('<em>No title provided</em>') | safe }}
+        </p>
+        <p>
+            <strong>Short URL:</strong> 
+            {# Assuming the app runs at the root #}
+            <a href="{{ url_for('redirect_link', keyword=link.keyword, _external=True) }}">{{ url_for('redirect_link', keyword=link.keyword, _external=True) }}</a>
+        </p>
+        <p>
+            <strong>Date Created:</strong> 
+            {{ link.timestamp | dateformat('%Y-%m-%d %H:%M:%S') }}
+        </p>
+        <p>
+            <strong>Total Clicks:</strong> 
+            {{ link.clicks | numberformat }}
+        </p>
+    </div>
+
+    {# Placeholder for detailed click log table/chart #}
+    <div class="detailed-stats">
+        <h3>Detailed Click History (Placeholder)</h3>
+        <p><em>Detailed click tracking (referrer, user agent, location, etc.) is not yet implemented. Requires a logging table.</em></p>
+        {# TODO: Add table or chart based on log data when available #}
+    </div>
+
+    <p><a href="{{ url_for('admin_index') }}">&laquo; Back to Admin Index</a></p>
+
+{% endblock %} 

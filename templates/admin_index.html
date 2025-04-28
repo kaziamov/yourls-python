@@ -116,7 +116,17 @@
                             <td>{{ link.title | default('N/A') }}</td>
                             <td>{{ link.timestamp | dateformat }}</td>
                             <td>{{ link.clicks | numberformat }}</td>
-                            <td>[Actions]</td> {# TODO: Add action buttons (Edit, Delete, Stats) #}
+                            <td>
+                                {# Action Buttons/Forms #}
+                                <a href="{{ url_for('link_stats', keyword=link.keyword) }}" class="action-button stats-button">Stats</a> {# TODO: i18n #}
+                                {# TODO: Add Edit button/link #}
+                                
+                                {# Delete Form #}
+                                <form method="post" action="{{ url_for('delete_link', keyword=link.keyword) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this link?');">
+                                    {# CSRF token could be added here for extra security #}
+                                    <button type="submit" class="action-button delete-button">Delete</button> {# TODO: i18n #}
+                                </form>
+                            </td>
                         </tr>
                     {% endfor %}
                 {% else %}

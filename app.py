@@ -332,6 +332,11 @@ def admin_index():
     context = get_admin_index_data(request.args)
     return render_template('admin_index.html', **context)
 
+@app.route('/delete/<string:keyword>', methods=['POST'])
+def delete_link(keyword):
+    ... 
+    # (delete_link implementation remains the same) ...
+
 @app.route('/<string:keyword>')
 def redirect_link(keyword):
     """Handles the redirection of a short keyword to its original URL."""
@@ -389,6 +394,48 @@ def redirect_link(keyword):
             cursor.close()
         if conn and conn.is_connected():
             conn.close()
+
+@app.route('/stats/<string:keyword>')
+def link_stats(keyword):
+    """Displays basic statistics for a specific link."""
+    sanitized_keyword = sanitize_keyword(keyword)
+    if not sanitized_keyword:
+        flash(f'Invalid keyword format: {keyword}', 'error')
+        return redirect(url_for('admin_index'))
+        # Or maybe abort(404)?
+
+    conn = get_db_connection()
+    if not conn:
+        flash('Error: Database connection failed.', 'error')
+        return redirect(url_for('admin_index'))
+
+    cursor = None
+    link_data = None
+    try:
+        cursor = conn.cursor(dictionary=True)
+        select_query = "SELECT keyword, url, title, timestamp, clicks FROM yourls_url WHERE keyword = %(keyword)s"
+        cursor.execute(select_query, {'keyword': sanitized_keyword})
+        link_data = cursor.fetchone()
+        
+        if not link_data:
+            flash(f'Link with keyword \"{sanitized_keyword}\" not found.', 'warning')
+            return redirect(url_for('admin_index'))
+
+        # TODO: Fetch detailed click log data here if/when available
+        # e.g., from a `yourls_log` table
+
+    except Error as e:
+        flash(f'Database error fetching stats: {e}', 'error')
+        print(f"DB Error (Stats): {e}")
+        return redirect(url_for('admin_index')) # Redirect on error
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
+
+    # If link_data was fetched successfully
+    return render_template('stats.html', link=link_data)
 
 # --- Main execution (remains the same) ---
 if __name__ == '__main__':
