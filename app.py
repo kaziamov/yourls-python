@@ -437,6 +437,110 @@ def link_stats(keyword):
     # If link_data was fetched successfully
     return render_template('stats.html', link=link_data)
 
+@app.route('/edit/<string:keyword>', methods=['GET', 'POST'])
+def edit_link(keyword):
+    """Handles displaying the edit form and updating the link."""
+    original_keyword = sanitize_keyword(keyword)
+    if not original_keyword:
+        flash(f'Invalid original keyword format: {keyword}', 'error')
+        return redirect(url_for('admin_index'))
+
+    conn = get_db_connection()
+    if not conn:
+        flash('Error: Database connection failed.', 'error')
+        return redirect(url_for('admin_index'))
+
+    cursor = None
+    try:
+        if request.method == 'POST':
+            # --- Handle Update ---            
+            new_url = request.form.get('url', '').strip()
+            new_keyword = request.form.get('keyword', '').strip()
+            new_title = request.form.get('title', '').strip()
+
+            # Validation
+            if not new_url or not new_keyword:
+                flash('Error: URL and Keyword cannot be empty.', 'error')
+                # Redirect back to edit form? Need to pass link data again.
+                # For simplicity, redirect to index for now.
+                return redirect(url_for('admin_index')) 
+            
+            if not new_url.lower().startswith(('http://', 'https://')):
+                 flash('Error: URL must start with http:// or https://.', 'error')
+                 return redirect(url_for('edit_link', keyword=original_keyword)) # Stay on edit page
+
+            sanitized_new_keyword = sanitize_keyword(new_keyword)
+            if not sanitized_new_keyword:
+                flash('Error: The new keyword contains invalid characters or is empty.', 'error')
+                return redirect(url_for('edit_link', keyword=original_keyword)) # Stay on edit page
+
+            cursor = conn.cursor()
+            update_query = """
+            UPDATE yourls_url 
+            SET keyword = %(new_keyword)s, url = %(new_url)s, title = %(new_title)s
+            WHERE keyword = %(original_keyword)s
+            """
+            data = {
+                'new_keyword': sanitized_new_keyword,
+                'new_url': new_url,
+                'new_title': new_title if new_title else None,
+                'original_keyword': original_keyword
+            }
+            
+            try:
+                cursor.execute(update_query, data)
+                # Check if the keyword change caused a collision
+                if cursor.rowcount == 0 and original_keyword != sanitized_new_keyword:
+                     # If no rows updated AND keyword changed, maybe original was gone?
+                     # Or maybe new keyword already exists? (Need separate check for that)
+                     # Let's assume for now the most likely error is new keyword collision.
+                     flash(f'Error: Could not update. The new keyword \"{sanitized_new_keyword}\" might already exist, or the original link was deleted.', 'error')
+                     conn.rollback()
+                     return redirect(url_for('edit_link', keyword=original_keyword))
+
+                elif cursor.rowcount == 0:
+                     # No rows updated, keyword didn't change - link likely deleted by someone else.
+                     flash(f'Error: Could not update link \"{original_keyword}\". It might have been deleted.', 'error')
+                     conn.rollback()
+                     return redirect(url_for('admin_index'))
+                else:
+                    conn.commit()
+                    flash(f'Link \"{sanitized_new_keyword}\" updated successfully.', 'success')
+                    return redirect(url_for('admin_index'))
+                    
+            except mysql.connector.Error as err:
+                 conn.rollback()
+                 if err.errno == 1062: # Duplicate entry for the NEW keyword
+                     flash(f'Error: The new keyword \"{sanitized_new_keyword}\" already exists.', 'error')
+                     return redirect(url_for('edit_link', keyword=original_keyword))
+                 else:
+                     flash(f'Database Error during update: {err}', 'error')
+                     print(f"DB Error (Update): {err}")
+                     return redirect(url_for('admin_index'))
+
+        else: # --- Handle GET Request ---            
+            cursor = conn.cursor(dictionary=True)
+            select_query = "SELECT keyword, url, title FROM yourls_url WHERE keyword = %(keyword)s"
+            cursor.execute(select_query, {'keyword': original_keyword})
+            link_data = cursor.fetchone()
+
+            if not link_data:
+                flash(f'Link with keyword \"{original_keyword}\" not found for editing.', 'warning')
+                return redirect(url_for('admin_index'))
+            
+            # Pass original_keyword separately for the form action URL
+            return render_template('edit_link.html', link=link_data, original_keyword=original_keyword)
+
+    except Error as e: # Catch potential errors during GET request DB interaction too
+        flash(f'Database error accessing link {original_keyword}: {e}', 'error')
+        print(f"DB Error (Edit GET/POST): {e}")
+        return redirect(url_for('admin_index'))
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
+
 # --- Main execution (remains the same) ---
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
