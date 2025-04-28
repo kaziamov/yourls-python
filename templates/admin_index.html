@@ -134,9 +134,9 @@
                         {# Filter Form (mimicking original tfoot) #}
                         <form id="filter_form" method="get" action="{{ url_for('admin_index') }}">
                             <div id="filter_options">
-                                {# Preserve existing sort order when submitting filter form #}
-                                <input type="hidden" name="sort_by" value="{{ sort_by }}">
-                                <input type="hidden" name="sort_order" value="{{ sort_order }}">
+                                {# Preserve existing sort order when submitting filter form - REMOVED #}
+                                {# <input type="hidden" name="sort_by" value="{{ sort_by }}"> #}
+                                {# <input type="hidden" name="sort_order" value="{{ sort_order }}"> #}
                                 
                                 <p>
                                     <label for="search">Search for</label> {# TODO: i18n #}
