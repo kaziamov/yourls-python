@@ -1,3 +1,9 @@
+*cache*
+.vscode/
+.idea/
+.docker/
+.env
+
 ############
 ## YOURLS
 

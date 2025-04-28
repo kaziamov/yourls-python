@@ -2,34 +2,6 @@
 
 {% block title %}{{ page_title | default('YOURLS Admin') }}{% endblock %}
 
-{# Helper macro to generate sort URLs #}
-{% macro sort_url(field, caption) -%}
-    {% set new_order = 'ASC' %}
-    {% set indicator = '' %}
-    {% if sort_by == field %}
-        {% if sort_order == 'ASC' %}
-            {% set new_order = 'DESC' %}
-            {% set indicator = ' <span class=\"sort_indicator\">&uarr;</span>' | safe %}
-        {% else %}
-            {% set indicator = ' <span class=\"sort_indicator\">&darr;</span>' | safe %}
-        {% endif %}
-    {% endif %}
-    <a href="{{ request.path }}?{{ query_params(sort_by=field, sort_order=new_order, page=1) }}">{{ caption }}{{ indicator }}</a>
-{%- endmacro %}
-
-{# Helper macro to generate query parameters, preserving existing ones #}
-{% macro query_params(**new_params) -%}
-    {% set params = request.args.copy() %}
-    {% for key, value in new_params.items() %}
-        {% if value is none %}
-            {% if key in params %}{% do params.pop(key) %}{% endif %}
-        {% else %}
-            {% do params.setlist(key, [value]) %}
-        {% endif %}
-    {% endfor %}
-    {{ params.to_dict(flat=False) | urlencode }}
-{%- endmacro %}
-
 {% block content %}
     {# Action hook placeholder #}
     {# {{ yourls_do_action('admin_page_before_content') }} #}
@@ -68,53 +40,82 @@
     {# {{ yourls_do_action('admin_page_before_table') }} #}
 
     <div id="links_table">
-        {# Table Head - Placeholder #}
-        {# {{ yourls_table_head() }} #}
-        <div id="table_head_placeholder">Table Header Here</div>
-
         {# Table Footer (Pagination/Filters) - Placeholder #}
         {# {{ yourls_html_tfooter(params) }} #}
         <div id="table_footer_placeholder">Table Footer/Pagination Here</div>
 
-        {# Table Body Start - Placeholder #}
-        {# {{ yourls_table_tbody_start() }} #}
+        {# Table Structure Starts Here #}
         <table>
             <thead>
+                {# Table Header Row with Sortable Links #}
                 <tr>
-                    <th>{{ sort_url('keyword', 'Keyword') }}</th>
-                    <th>{{ sort_url('url', 'URL') }}</th>
-                    <th>{{ sort_url('title', 'Title') }}</th>
-                    <th>{{ sort_url('timestamp', 'Date') }}</th>
-                    <th>{{ sort_url('clicks', 'Clicks') }}</th>
-                    <th>Actions</th> {# Actions column is not sortable #}
-                 </tr>
+                    <th>
+                        <a href="{{ sort_url('keyword', sort_by, sort_order, request.args) }}">
+                            Short URL
+                            {% if sort_by == 'keyword' %}
+                                <span class="sort_arrow">{{ '▲' if sort_order == 'ASC' else '▼' }}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>
+                        <a href="{{ sort_url('url', sort_by, sort_order, request.args) }}">
+                            Original URL
+                            {% if sort_by == 'url' %}
+                                <span class="sort_arrow">{{ '▲' if sort_order == 'ASC' else '▼' }}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>
+                        <a href="{{ sort_url('title', sort_by, sort_order, request.args) }}">
+                            Title
+                            {% if sort_by == 'title' %}
+                                <span class="sort_arrow">{{ '▲' if sort_order == 'ASC' else '▼' }}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                     <th>
+                        <a href="{{ sort_url('timestamp', sort_by, sort_order, request.args) }}">
+                            Date
+                            {% if sort_by == 'timestamp' %}
+                                <span class="sort_arrow">{{ '▲' if sort_order == 'ASC' else '▼' }}</span>
+                            {% endif %}
+                        </a>
+                    </th>                   
+                    <th>
+                        <a href="{{ sort_url('clicks', sort_by, sort_order, request.args) }}">
+                            Clicks
+                            {% if sort_by == 'clicks' %}
+                                <span class="sort_arrow">{{ '▲' if sort_order == 'ASC' else '▼' }}</span>
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>Actions</th> {# Non-sortable column #}
+                </tr>
             </thead>
             <tbody>
                 {% if links %}
                     {% for link in links %}
                         {# Table Row - Placeholder for content from yourls_table_add_row() #}
+                        {# TODO: Replicate structure/classes from yourls_table_add_row() more closely #}
                         <tr>
                             <td>{{ link.keyword }}</td>
-                            <td><a href="{{ link.url }}" title="{{ link.url }}">{{ link.url[:80] }}{% if link.url|length > 80 %}...{% endif %}</a></td> {# Shorten long URLs #}
+                            <td><a href="{{ link.url }}" title="{{ link.url }}">{{ link.url | truncate(60) }}</a></td> {# Added truncate filter example #}
                             <td>{{ link.title | default('N/A') }}</td>
-                            <td>{{ link.timestamp | dateformat }}</td> {# Needs a date formatting filter #}
+                            <td>{{ link.timestamp | dateformat }}</td>
                             <td>{{ link.clicks | numberformat }}</td>
-                            <td>[Actions]</td> {# TODO: Add action buttons #}
+                            <td>[Actions]</td> {# TODO: Add action buttons (Edit, Delete, Stats) #}
                         </tr>
                     {% endfor %}
                 {% else %}
                     <tr id="nourl_found">
                         {# TODO: Implement i18n function like yourls__() #}
-                        <td colspan="6">No matching URLs found.</td> {# Updated message #}
+                        <td colspan="6">No URL found matching your criteria.</td> {# Updated message #}
                     </tr>
                 {% endif %}
             </tbody>
+            {# Table Footer will go inside the table structure later #}
         </table>
-        {# Table Body End - Placeholder #}
-        {# {{ yourls_table_tbody_end() }} #}
-
         {# Table End - Placeholder #}
-        {# {{ yourls_table_end() }} #}
     </div>
 
     {# Action hook placeholder #}

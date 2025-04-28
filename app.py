@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, url_for
 from dotenv import load_dotenv
 import mysql.connector
 from mysql.connector import Error
@@ -43,7 +43,7 @@ def get_db_connection():
         print(f"Error: Invalid DB_PORT value in .env. Must be an integer.")
         return None
 
-# --- Jinja2 Filters ---
+# --- Jinja2 Filters & Globals ---
 def simple_number_format(value):
     """Basic number format filter."""
     try:
@@ -64,10 +64,24 @@ def format_datetime(value, format='%Y-%m-%d %H:%M'):
     except (ValueError, TypeError):
         return str(value) # Return as string if formatting fails
 
+# Helper function for sorting URLs
+def generate_sort_url(column_name, current_sort_by, current_sort_order, current_args):
+    """Generates URL for sorting table columns, preserving other query params."""
+    args = current_args.copy()
+    args['sort_by'] = column_name
+    # Determine next sort order
+    if current_sort_by == column_name and current_sort_order == 'ASC':
+        args['sort_order'] = 'DESC'
+    else:
+        args['sort_order'] = 'ASC' # Default to ASC on new column or if current is DESC
+    # Reset page to 1 when changing sort column?
+    # args['page'] = 1 # Optional: Reset page when sort changes
+    return url_for('admin_index', **args)
 
+# Register filters and globals
 app.jinja_env.filters['numberformat'] = simple_number_format
 app.jinja_env.filters['dateformat'] = format_datetime
-
+app.add_template_global(generate_sort_url, name='sort_url')
 
 # --- Data Fetching ---
 def get_admin_index_data(args):
