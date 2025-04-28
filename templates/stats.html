@@ -3,63 +3,49 @@
 {% block title %}Stats for {{ link.keyword }}{% endblock %}
 
 {% block content %}
-    <h2>Statistics for Short URL: {{ link.keyword }}</h2>
+    {# Using h2 consistent with admin page #}
+    <h2>Statistics for Short URL: /{{ link.keyword }}</h2> 
 
-    <div class="stats-summary">
-        <p>
-            <strong>Original URL:</strong> 
-            <a href="{{ link.url }}" title="{{ link.url }}">{{ link.url | truncate(80) }}</a>
-        </p>
-        <p>
-            <strong>Title:</strong> 
-            {{ link.title | default('<em>No title provided</em>') | safe }}
-        </p>
-        <p>
-            <strong>Short URL:</strong> 
-            {# Assuming the app runs at the root #}
-            <a href="{{ url_for('redirect_link', keyword=link.keyword, _external=True) }}">{{ url_for('redirect_link', keyword=link.keyword, _external=True) }}</a>
-        </p>
-        <p>
-            <strong>Date Created:</strong> 
-            {{ link.timestamp | dateformat('%Y-%m-%d %H:%M:%S') }}
-        </p>
-        <p>
-            <strong>Total Clicks:</strong> 
-            {{ link.clicks | numberformat }}
-        </p>
+    {# Removed wrapping div.box #}
+    <h3>Link Information</h3>
+    <div id="stats_summary" class="stats_summary"> {# Changed class? Original doesn't seem to have specific container here #}
+        <p><strong>Original URL:</strong> <a href="{{ link.url }}" title="{{ link.url }}">{{ link.url | truncate(80) }}</a></p>
+        <p><strong>Title:</strong> {{ link.title | default('<em>No title provided</em>') | safe }}</p>
+        <p><strong>Short URL:</strong> <a href="{{ url_for('redirect_link', keyword=link.keyword, _external=True) }}">{{ url_for('redirect_link', keyword=link.keyword, _external=True) }}</a></p>
+        <p><strong>Date Created:</strong> {{ link.timestamp | dateformat('%Y-%m-%d %H:%M:%S') }}</p>
+        <p><strong>Total Clicks:</strong> <strong class="increment">{{ link.clicks | numberformat }}</strong></p>
     </div>
 
-    {# Placeholder for detailed click log table/chart - Replaced below #}
-    <div class="detailed-stats">
-        <h3>Recent Click History (Last 100)</h3>
-        
+    {# Removed wrapping div.box #}
+    <h3>Recent Click History (Last 100)</h3>
+    <div id="detailed_stats"> {# Keep container ID for potential JS hooks #}
         {% if logs %}
-            <table class="click-log-table">
+            {# Apply same classes and attributes as main table for consistency #}
+            <table id="log_table" class="tblSorter" cellpadding="0" cellspacing="1">
                 <thead>
                     <tr>
-                        <th>Timestamp</th>
-                        <th>Referrer</th>
-                        <th>User Agent</th>
-                        <th>IP Address</th>
-                        {# <th>Country</th> #} {# Uncomment when GeoIP is added #}
+                        {# Use same classes as main table for consistency, if applicable #}
+                        <th class="timestamp">Timestamp</th>
+                        <th class="referrer">Referrer</th>
+                        <th class="user_agent">User Agent</th>
+                        <th class="ip">IP Address</th>
+                        {# <th class="country">Country</th> #}
                     </tr>
                 </thead>
                 <tbody>
                     {% for log_entry in logs %}
                         <tr>
-                            <td>{{ log_entry.click_time | dateformat('%Y-%m-%d %H:%M:%S') }}</td>
-                            <td>
+                            <td class="timestamp">{{ log_entry.click_time | dateformat('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td class="referrer">
                                 {% if log_entry.referrer %}
-                                    <a href="{{ log_entry.referrer }}" target="_blank" rel="noopener noreferrer" title="{{ log_entry.referrer }}">
-                                        {{ log_entry.referrer | truncate(50) }}
-                                    </a>
+                                    <a href="{{ log_entry.referrer }}" target="_blank" rel="noopener noreferrer" title="{{ log_entry.referrer }}">{{ log_entry.referrer | truncate(50) }}</a>
                                 {% else %}
                                     <em>Direct</em>
                                 {% endif %}
                             </td>
-                            <td title="{{ log_entry.user_agent }}">{{ log_entry.user_agent | truncate(60) }}</td>
-                            <td>{{ log_entry.ip_address }}</td>
-                            {# <td>{{ log_entry.country_code or 'N/A' }}</td> #}
+                            <td class="user_agent" title="{{ log_entry.user_agent }}">{{ log_entry.user_agent | truncate(60) }}</td>
+                            <td class="ip">{{ log_entry.ip_address }}</td>
+                            {# <td class="country">{{ log_entry.country_code or 'N/A' }}</td> #}
                         </tr>
                     {% endfor %}
                 </tbody>
@@ -69,6 +55,7 @@
         {% endif %}
     </div>
 
-    <p><a href="{{ url_for('admin_index') }}">&laquo; Back to Admin Index</a></p>
+    {# Style back link like a button or standard nav link #}
+    <p><a href="{{ url_for('admin_index') }}" class="button">&laquo; Back to Admin Index</a></p>
 
 {% endblock %} 

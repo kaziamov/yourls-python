@@ -52,7 +52,7 @@
             <thead>
                 {# Table Header Row with Sortable Links #}
                 <tr>
-                    <th>
+                    <th class="keyword">
                         <a href="{{ sort_url('keyword', sort_by, sort_order, request.args) }}">
                             Short URL
                             {% if sort_by == 'keyword' %}
@@ -60,7 +60,7 @@
                             {% endif %}
                         </a>
                     </th>
-                    <th>
+                    <th class="url">
                         <a href="{{ sort_url('url', sort_by, sort_order, request.args) }}">
                             Original URL
                             {% if sort_by == 'url' %}
@@ -68,7 +68,7 @@
                             {% endif %}
                         </a>
                     </th>
-                    <th>
+                    <th class="title">
                         <a href="{{ sort_url('title', sort_by, sort_order, request.args) }}">
                             Title
                             {% if sort_by == 'title' %}
@@ -76,7 +76,7 @@
                             {% endif %}
                         </a>
                     </th>
-                     <th>
+                     <th class="timestamp">
                         <a href="{{ sort_url('timestamp', sort_by, sort_order, request.args) }}">
                             Date
                             {% if sort_by == 'timestamp' %}
@@ -84,7 +84,7 @@
                             {% endif %}
                         </a>
                     </th>                   
-                    <th>
+                    <th class="clicks">
                         <a href="{{ sort_url('clicks', sort_by, sort_order, request.args) }}">
                             Clicks
                             {% if sort_by == 'clicks' %}
@@ -92,7 +92,7 @@
                             {% endif %}
                         </a>
                     </th>
-                    <th>Actions</th> {# Non-sortable column #}
+                    <th class="actions">Actions</th> {# Non-sortable column #}
                 </tr>
             </thead>
             <tbody>
@@ -101,12 +101,12 @@
                         {# Table Row - Placeholder for content from yourls_table_add_row() #}
                         {# TODO: Replicate structure/classes from yourls_table_add_row() more closely #}
                         <tr>
-                            <td>{{ link.keyword }}</td>
-                            <td><a href="{{ link.url }}" title="{{ link.url }}">{{ link.url | truncate(60) }}</a></td> {# Added truncate filter example #}
-                            <td>{{ link.title | default('N/A') }}</td>
-                            <td>{{ link.timestamp | dateformat }}</td>
-                            <td>{{ link.clicks | numberformat }}</td>
-                            <td>
+                            <td class="keyword">{{ link.keyword }}</td>
+                            <td class="url"><a href="{{ link.url }}" title="{{ link.url }}">{{ link.url | truncate(60) }}</a></td> {# Added truncate filter example #}
+                            <td class="title">{{ link.title | default('N/A') }}</td>
+                            <td class="timestamp">{{ link.timestamp | dateformat }}</td>
+                            <td class="clicks">{{ link.clicks | numberformat }}</td>
+                            <td class="actions">
                                 {# Action Buttons/Forms #}
                                 <a href="{{ url_for('edit_link', keyword=link.keyword) }}" class="action-button edit-button">Edit</a> {# TODO: i18n #}
                                 <a href="{{ url_for('link_stats', keyword=link.keyword) }}" class="action-button stats-button">Stats</a> {# TODO: i18n #}
