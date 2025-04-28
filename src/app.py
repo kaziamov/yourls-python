@@ -204,14 +204,37 @@ def keyword_is_free(keyword: str, conn = None) -> bool:
     return not keyword_is_taken(keyword, conn)
 
 
-def sanitize_keyword(keyword: str | None) -> str | None:
-    """Sanitizes a keyword according to YOURLS rules (more precise)."""
-    if not keyword: return None
-    # Allow characters from the charset, plus hyphen (often allowed)
-    # Original YOURLS also uses a filter 'sanitize_string' which might do more
-    allowed_chars = SHORTURL_CHARSET + '-'
-    # Remove any character NOT in the allowed set
-    sanitized = re.sub(f'[^\{re.escape(allowed_chars)}]', '', keyword)
+def sanitize_keyword(keyword: str | None, restrict_to_shorturl_charset: bool = False) -> str | None:
+    """Sanitizes a keyword according to YOURLS rules.
+
+    Args:
+        keyword: The keyword string to sanitize.
+        restrict_to_shorturl_charset: If True, removes all characters NOT in
+                                      SHORTURL_CHARSET. If False (default), 
+                                      performs basic URL sanitization (currently basic).
+
+    Returns:
+        The sanitized keyword string or None if input is None.
+    """
+    if not keyword: 
+        return None
+
+    if restrict_to_shorturl_charset:
+        # Mode used when adding/editing: remove everything NOT in the allowed charset
+        # Note: Does NOT include hyphen unless it's part of SHORTURL_CHARSET
+        pattern = re.escape(SHORTURL_CHARSET)
+        sanitized = re.sub(f'[^{pattern}]', '', keyword)
+        # Limit length as in original YOURLS
+        sanitized = sanitized[:199]
+    else:
+        # Mode used for display/lookup: less strict sanitization
+        # Placeholder: Implement yourls_sanitize_url logic if needed.
+        # For now, apply minimal sanitization or return as is for lookup.
+        # Basic example: remove control characters, trim whitespace
+        sanitized = re.sub(r'[\x00-\x1f\x7f]', '', keyword).strip()
+        # If implementing fully, would need to handle protocols, etc.
+        # like yourls_esc_url in PHP.
+        
     return sanitized if sanitized else None
 
 # Updated keyword generation - random but checks availability
@@ -507,10 +530,10 @@ async def admin_index_post(request: Request,
 
         final_keyword = None
         if keyword:
-            # Custom keyword provided
-            sanitized_custom_keyword = sanitize_keyword(keyword.strip())
+            # Sanitize provided keyword strictly for DB insertion
+            sanitized_custom_keyword = sanitize_keyword(keyword.strip(), restrict_to_shorturl_charset=True)
             if not sanitized_custom_keyword:
-                 add_notification(request, f'Error: Custom keyword "{keyword}" contains invalid characters or is empty.', 'error')
+                 add_notification(request, f'Error: Custom keyword "{keyword}" contains invalid characters or is empty after sanitization.', 'error')
                  return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
             
             if not keyword_is_free(sanitized_custom_keyword, conn):
@@ -518,7 +541,7 @@ async def admin_index_post(request: Request,
                  return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
             final_keyword = sanitized_custom_keyword
         else:
-            # Generate keyword using the new sequential logic
+            # Generate keyword (already sanitized by its generation process)
             final_keyword = generate_next_keyword(conn)
             if not final_keyword:
                  add_notification(request, 'Error: Could not generate a unique keyword. Please try again or provide a custom one.', 'error')
@@ -593,10 +616,12 @@ async def delete_link_post(request: Request, keyword: str, user_id: str = Depend
 
 @app.get("/stats/{keyword}", response_class=HTMLResponse, name="link_stats")
 async def link_stats_get(request: Request, keyword: str, user_id: str = Depends(get_current_user_or_redirect)): 
-    sanitized_keyword = sanitize_keyword(keyword)
+    # Sanitize keyword less strictly for lookup/display
+    sanitized_keyword = sanitize_keyword(keyword) # restrict_to_shorturl_charset=False (default)
     if not sanitized_keyword: 
-        print(f"Invalid keyword format: {keyword}")
-        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
+        print(f"Invalid keyword format for stats lookup: {keyword}") # Log original
+        # Handle error appropriately, maybe 404 or redirect
+        raise HTTPException(status_code=404, detail="Invalid keyword format")
 
     conn = get_db_connection()
     if not conn: 
@@ -648,10 +673,11 @@ async def link_stats_get(request: Request, keyword: str, user_id: str = Depends(
 
 @app.get("/edit/{keyword}", response_class=HTMLResponse, name="edit_link")
 async def edit_link_get(request: Request, keyword: str, user_id: str = Depends(get_current_user_or_redirect)): 
-    original_keyword = sanitize_keyword(keyword)
-    if not original_keyword: 
-        print(f"Invalid keyword format: {keyword}")
-        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
+    # Sanitize keyword less strictly for lookup/display
+    original_keyword_lookup = sanitize_keyword(keyword) # restrict_to_shorturl_charset=False (default)
+    if not original_keyword_lookup: 
+        print(f"Invalid keyword format for edit lookup: {keyword}")
+        raise HTTPException(status_code=404, detail="Invalid keyword format")
 
     conn = get_db_connection()
     if not conn: 
@@ -663,18 +689,19 @@ async def edit_link_get(request: Request, keyword: str, user_id: str = Depends(g
     try:
         cursor = conn.cursor(dictionary=True)
         select_query = "SELECT keyword, url, title FROM yourls_url WHERE keyword = %(keyword)s"
-        cursor.execute(select_query, {'keyword': original_keyword})
+        cursor.execute(select_query, {'keyword': original_keyword_lookup})
         link_data = cursor.fetchone()
 
         if not link_data:
-            print(f'Link "{original_keyword}" not found for editing.')
+            print(f'Link "{original_keyword_lookup}" not found for editing.')
             return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
         
-        context = {"request": request, "link": link_data, "original_keyword": original_keyword, "current_user_id": user_id}
+        # Pass the *original* unsanitized keyword to the template for display/path generation
+        context = {"request": request, "link": link_data, "original_keyword": keyword, "current_user_id": user_id}
         return templates.TemplateResponse('edit_link.html', context)
         
     except Error as e:
-        print(f'Database error accessing link {original_keyword}: {e}')
+        print(f'Database error accessing link {original_keyword_lookup}: {e}')
         return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
     finally:
         if cursor: cursor.close()
@@ -682,12 +709,14 @@ async def edit_link_get(request: Request, keyword: str, user_id: str = Depends(g
 
 @app.post("/edit/{keyword}", response_class=RedirectResponse, name="edit_link_post")
 async def edit_link_post(request: Request, 
-                         keyword: str, 
+                         keyword: str, # Original keyword from path
                          url: str = Form(...), 
-                         new_keyword: str = Form(..., alias="keyword"),
+                         new_keyword: str = Form(..., alias="keyword"), # New keyword from form
                          title: Optional[str] = Form(None),
-                         user_id: str = Depends(get_current_user_or_redirect)): 
-    original_keyword = sanitize_keyword(keyword)
+                         user_id: str = Depends(get_current_user_or_redirect)): # Protect
+    # Sanitize original keyword from path less strictly for potential use in redirect URL
+    original_keyword_lookup = sanitize_keyword(keyword) # False default
+    
     new_url_strip = url.strip()
     new_keyword_strip = new_keyword.strip()
     new_title_strip = title.strip() if title else ""
@@ -698,13 +727,16 @@ async def edit_link_post(request: Request,
     if not new_url_strip.lower().startswith(('http://', 'https://')):
         print('Error: URL must start with http:// or https://.')
         
-        edit_url = request.url_for('edit_link', keyword=original_keyword)
+        edit_url = request.url_for('edit_link', keyword=original_keyword_lookup or keyword)
         return RedirectResponse(url=edit_url, status_code=status.HTTP_302_FOUND)
 
-    sanitized_new_keyword = sanitize_keyword(new_keyword_strip)
+    # Sanitize the *new* keyword strictly for DB update
+    sanitized_new_keyword = sanitize_keyword(new_keyword_strip, restrict_to_shorturl_charset=True)
     if not sanitized_new_keyword:
-        print('Error: The new keyword contains invalid characters or is empty.')
-        edit_url = request.url_for('edit_link', keyword=original_keyword)
+        print(f'Error: The new keyword "{new_keyword_strip}" contains invalid characters or is empty after sanitization.')
+        # Redirect back using the less-sanitized original keyword from path
+        edit_url = request.url_for('edit_link', keyword=original_keyword_lookup or keyword) # Fallback to raw keyword if sanitization fails
+        add_notification(request, 'Error: The new keyword contains invalid characters or is empty after sanitization.', 'error')
         return RedirectResponse(url=edit_url, status_code=status.HTTP_302_FOUND)
 
     conn = get_db_connection()
@@ -718,14 +750,16 @@ async def edit_link_post(request: Request,
         cursor = conn.cursor()
         update_query = "UPDATE yourls_url SET keyword = %(new_keyword)s, url = %(new_url)s, title = %(new_title)s WHERE keyword = %(original_keyword)s"
         data = {
-            'new_keyword': sanitized_new_keyword, 'new_url': new_url_strip, 
-            'new_title': new_title_strip if new_title_strip else None, 'original_keyword': original_keyword
+            'new_keyword': sanitized_new_keyword, 
+            'new_url': new_url_strip, 
+            'new_title': new_title_strip if new_title_strip else None, 
+            'original_keyword': original_keyword_lookup # Use less-sanitized original for lookup
         }
         cursor.execute(update_query, data)
         
         if cursor.rowcount == 0:
              conn.rollback()
-             add_notification(request, f'Error: Could not update link "{original_keyword}". It might have been deleted or new keyword exists.', 'error')
+             add_notification(request, f'Error: Could not update link "{original_keyword_lookup}". It might have been deleted or new keyword exists.', 'error')
              redirect_to_edit = True 
         else:
             conn.commit()
@@ -744,7 +778,8 @@ async def edit_link_post(request: Request,
         if conn and conn.is_connected(): conn.close()
 
     if redirect_to_edit:
-        edit_url = request.url_for('edit_link', keyword=original_keyword)
+        # Use less-sanitized original for redirect URL
+        edit_url = request.url_for('edit_link', keyword=original_keyword_lookup or keyword)
         return RedirectResponse(url=edit_url, status_code=status.HTTP_302_FOUND)
     else:
         return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
@@ -817,9 +852,10 @@ async def api_handler_route(request: Request):
 
 @app.get("/{keyword}", response_class=RedirectResponse, name="redirect_link")
 async def redirect_link_get(request: Request, keyword: str):
-    sanitized_keyword = sanitize_keyword(keyword)
+    # Sanitize keyword less strictly for lookup
+    sanitized_keyword = sanitize_keyword(keyword) # restrict_to_shorturl_charset=False (default)
     if not sanitized_keyword: 
-        raise HTTPException(status_code=404, detail="Keyword not found")
+        raise HTTPException(status_code=404, detail="Keyword not found (invalid format)")
 
     conn = get_db_connection()
     if not conn: 
