@@ -20,6 +20,8 @@
     <script src="{{ url_for('js', path='/jquery.notifybar.js') }}"></script>
     <script src="{{ url_for('js', path='/jquery-3.tablesorter.min.js') }}"></script>
     <script src="{{ url_for('js', path='/jquery.cal.js') }}"></script>
+    <script src="{{ url_for('js', path='/clipboard.min.js') }}"></script>
+    <script src="{{ url_for('js', path='/share.js') }}"></script>
     {# TODO: Add tablesorte.js, insert.js, share.js, clipboard.min.js conditionally? #}
 </head>
 <body class="{{ body_class or 'desktop' }}"> {# Added body class variable #}
@@ -64,6 +66,35 @@
         {% endblock %}
     </main>
 
+    {# Share Box Structure (Initially Hidden) - Based on yourls_share_box() #}
+    <div id="shareboxes" style="display: none; position: absolute; background: #fff; border: 1px solid #ccc; padding: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 100;">
+        <div id="copybox" class="share">
+            <h2>Your short link</h2> {# Title can be updated by JS if needed #}
+            <p><input id="copylink" class="text" size="32" value="" readonly /></p> {# Value set by JS #}
+            <p>
+                <small>Long link: <a id="origlink" href="#" target="_blank" rel="noopener"></a></small> {# Value & href set by JS #}
+                <br/>
+                <small>Stats: <a id="statlink" href="#"></a></small> {# Value & href set by JS #}
+                <input type="hidden" id="titlelink" value="" /> {# Value set by JS #}
+            </p>
+        </div>
+        <div id="sharebox" class="share">
+            <h2>Quick Share</h2> {# Title can be updated by JS if needed #}
+            <div id="tweet">
+                <span id="charcount" class="hide-if-no-js">280</span> {# Initial value, updated by JS #}
+                <textarea id="tweet_body" rows="3" cols="30"></textarea> {# Value set by JS #}
+            </div>
+            <p id="share_links">Share with
+                <a id="share_tw" href="#" title="Tweet this!" target="_blank" rel="noopener noreferrer">Twitter</a> {# Href set by JS #}
+                <a id="share_fb" href="#" title="Share on Facebook" target="_blank" rel="noopener noreferrer">Facebook</a> {# Href set by JS #}
+                {# Add more share links here if needed #}
+            </p>
+        </div>
+        {# Add a close button maybe? #}
+        <button type="button" onclick="$('#shareboxes').hide();" style="position: absolute; top: 5px; right: 5px; cursor: pointer; border: none; background: transparent; font-size: 1.2em;" title="Close">&times;</button>
+    </div>
+    {# End Share Box Structure #}
+
 </div> {# End #wrap #}
 
 <footer id="footer" role="contentinfo"> {# Added role #}
@@ -103,7 +134,72 @@ $(document).ready(function() {
         $('#feedback').show();
     }
     // TODO: Add other necessary JS inits (clipboard, share, etc.)
+    init_clipboard(); // Initialize clipboard functionality from share.js
+    init_share_buttons(); // Initialize share button logic
 });
+
+// Share Box Logic
+function init_share_buttons() {
+    $('.share-button').on('click', function(e) {
+        e.stopPropagation(); // Prevent event bubbling
+        var button = $(this);
+        var sharebox = $('#shareboxes');
+
+        // Get data from button
+        var keyword = button.data('keyword');
+        var longUrl = button.data('url');
+        var title = button.data('title');
+        var shortUrl = button.data('shorturl');
+        var statUrl = button.data('staturl');
+
+        // Populate the share box
+        $('#copylink').val(shortUrl);
+        $('#origlink').attr('href', longUrl).text(longUrl);
+        $('#statlink').attr('href', statUrl).text(statUrl);
+        $('#titlelink').val(title);
+
+        // Prepare text for tweet box (adjust formatting as needed)
+        var tweetText = (title ? title + ' ' : '') + shortUrl;
+        $('#tweet_body').val(tweetText);
+
+        // Position the share box near the button
+        var buttonPos = button.offset();
+        sharebox.css({
+            top: buttonPos.top + button.outerHeight() + 5 + 'px', // Position below button
+            left: buttonPos.left + 'px',
+            display: 'block' // Show the box
+        });
+
+        // Trigger update for char count and share links (from share.js)
+        if (typeof update_share === 'function') {
+            update_share();
+        }
+        // Optional: select text in copy link field
+        $('#copylink').select(); 
+    });
+
+    // Hide sharebox if clicked outside
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('#shareboxes').length && !$(e.target).hasClass('share-button')) {
+            $('#shareboxes').hide();
+        }
+    });
+}
+
+// Ensure update_share and init_clipboard are defined (might need to load share.js)
+// Placeholder for update_share if share.js isn't loaded or guaranteed
+if (typeof update_share === 'undefined') {
+    window.update_share = function() { 
+        console.log('update_share function placeholder called'); 
+        // Basic char count update if function not found
+        var text = $('#tweet_body').val();
+        var charcount = 280 - (text ? text.length : 0);
+         $('#charcount').toggleClass("negative", charcount < 0).text( charcount );
+    };
+}
+if (typeof init_clipboard === 'undefined') {
+    window.init_clipboard = function() { console.log('init_clipboard placeholder called'); };
+}
 </script>
 {% block scripts_extra %}{% endblock %}
 </body>

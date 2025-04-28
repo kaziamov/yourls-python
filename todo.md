@@ -5,7 +5,7 @@
 *These tasks likely require referencing the original PHP code for accurate implementation, compatibility, or understanding specific logic/formats.*
 
 - [x] **Keyword Generation:** Implement YOURLS-compliant sequential keyword generation (e.g., base36) in `generate_next_keyword`. (Requires knowing `yourls_get_next_keyword()` logic).
-- [ ] **Keyword Sanitization:** Refine `sanitize_keyword` to exactly match YOURLS allowed characters and rules. (Requires knowing `yourls_sanitize_keyword()` logic).
+- [x] **Keyword Sanitization:** Refine `sanitize_keyword` to exactly match YOURLS allowed characters and rules. (Requires knowing `yourls_sanitize_keyword()` logic).
 - [ ] **"Share" Feature:** Add the "Share" button to the links table and implement the corresponding share box functionality (HTML, JS). (Requires analysis of `yourls_share_box()`, `share.js`, `common.js`).
 - [ ] **"Tools" Page:** Create the `/tools` route and `tools.html` template, replicating the bookmarklet generator and potentially other tools. (Requires analysis of `tools.php` for bookmarklet code generation).
 - [ ] **API Implementation:** Implement the YOURLS API endpoints in Python. (Requires detailed analysis of `yourls-api.php` for parameters, formats, auth).
