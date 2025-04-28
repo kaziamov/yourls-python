@@ -1,0 +1,21 @@
+Metadata-Version: 2.4
+Name: yourls-fastapi-adapter
+Version: 0.1.0
+Summary: A Python FastAPI adapter for the YOURLS admin interface.
+License: MIT
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Framework :: FastAPI
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.10
+License-File: LICENSE
+Requires-Dist: fastapi>=0.100
+Requires-Dist: uvicorn[standard]>=0.20
+Requires-Dist: jinja2>=3.0
+Requires-Dist: mysql-connector-python>=8.0
+Requires-Dist: python-dotenv>=0.19
+Requires-Dist: python-multipart>=0.0.20
+Provides-Extra: test
+Requires-Dist: pytest>=7.0; extra == "test"
+Requires-Dist: httpx>=0.24; extra == "test"
+Dynamic: license-file

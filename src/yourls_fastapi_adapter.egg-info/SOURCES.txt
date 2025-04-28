@@ -1,0 +1,10 @@
+LICENSE
+README.md
+pyproject.toml
+src/app.py
+src/yourls_fastapi_adapter.egg-info/PKG-INFO
+src/yourls_fastapi_adapter.egg-info/SOURCES.txt
+src/yourls_fastapi_adapter.egg-info/dependency_links.txt
+src/yourls_fastapi_adapter.egg-info/requires.txt
+src/yourls_fastapi_adapter.egg-info/top_level.txt
+tests/test_app.py

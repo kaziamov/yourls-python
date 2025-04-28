@@ -1,7 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "yourls"
+name = "yourls-fastapi-adapter"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+description = "A Python FastAPI adapter for the YOURLS admin interface."
 requires-python = ">=3.10"
-dependencies = []
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Framework :: FastAPI",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "fastapi>=0.100",
+    "uvicorn[standard]>=0.20",
+    "jinja2>=3.0",
+    "mysql-connector-python>=8.0",
+    "python-dotenv>=0.19",
+    "python-multipart>=0.0.20",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+    "httpx>=0.24",
+]

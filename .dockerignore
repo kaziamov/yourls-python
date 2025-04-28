@@ -1,0 +1,56 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# GitHub Actions
+.github/
+
+
+# Python cache, virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+.venv/
+venv/
+ENV/
+env/
+
+# PHP Code & Related Files/Directories
+*.php
+admin/
+includes/
+user/
+vendor/
+composer.json
+composer.lock
+phpunit.xml.dist
+
+# Samples & Docs (from original PHP context)
+sample-*.txt
+readme.html
+
+# Other Dev/Documentation Files
+.editorconfig
+README.md
+LICENSE
+CHANGELOG.md
+schema.sql
+todo.md 

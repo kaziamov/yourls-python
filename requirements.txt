@@ -1,10 +1,24 @@
-Flask>=2.0
-python-dotenv>=0.19
+# Web Framework
+fastapi>=0.100
+
+# ASGI Server
+uvicorn[standard]>=0.20 # Includes standard dependencies like websockets, httptools
+
+# Templating
+jinja2>=3.0 # FastAPI uses Jinja2 directly
+
+# Other existing dependencies (DB, dotenv)
 mysql-connector-python>=8.0
+python-dotenv>=0.19
 
-# Testing
+# Removed Flask and Flask-Login
+# Flask>=2.0 
+# Flask-Login>=0.6
+
+# Testing (FastAPI uses its own TestClient)
 pytest>=7.0
-pytest-flask>=1.0
+# pytest-flask>=1.0
+httpx>=0.24 # Required by TestClient
 
-# Web Server
-gunicorn>=21.0 
+# Web Server (Alternative for production - keep for now if needed, but uvicorn is primary)
+# gunicorn>=21.0 

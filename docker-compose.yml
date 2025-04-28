@@ -1,8 +1,5 @@
-version: '3.8'
-
 services:
   database:
-    # default port 3306
     image: mysql:8
     restart: unless-stopped
     ports:
@@ -16,22 +13,20 @@ services:
       - ./.docker/mysql:/var/lib/mysql
       - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
     networks:
-      - external-network  
+      - default-network  
+
+
   web:
-    build: . # Build the image from the Dockerfile in the current directory
-    container_name: yourls_python_web
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "5000:5000" # Map host port 5000 to container port 5000
-    env_file:
-      - .env # Load environment variables from the .env file in the root directory
-    # Optional: Add depends_on if you have a database service defined here
-    # depends_on:
-    #   - db 
-    # Optional: Add volumes for development to reflect code changes without rebuilding
-    # volumes:
-    #   - ./src:/app/src
-    restart: unless-stopped # Optional: Restart policy
+      - "5000:8000" 
+    restart: no
+    command: bash -c "uv run uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload --reload-dir ."
+    networks:
+      - default-network
 
 networks:
-  external-network:
-    external: true
+  default-network:
+    driver: bridge

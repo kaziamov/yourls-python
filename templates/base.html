@@ -5,57 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {# TODO: Add generator/description meta tags? #}
     <title>{% block title %}YOURLS Admin{% endblock %}</title>
-    <link rel="shortcut icon" href="{{ url_for('static', filename='images/favicon.svg') }}">
+    <link rel="shortcut icon" href="{{ url_for('images', path='/favicon.svg') }}">
     
     {# CSS Files - Added tablesorter.css #}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tablesorter.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/cal.css') }}">
+    <link rel="stylesheet" href="{{ url_for('css', path='/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('css', path='/tablesorter.css') }}">
+    <link rel="stylesheet" href="{{ url_for('css', path='/cal.css') }}">
     {# TODO: Add other CSS conditionally? (share.css) #}
     {% block head_extra %}{% endblock %}
 
     {# JS Files - Ensure correct order and inclusion #}
-    <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script> {# Original uses jquery-3.5.1.min.js #}
-    <script src="{{ url_for('static', filename='js/common.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/jquery.notifybar.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/jquery.tablesorter.min.js') }}"></script> {# Original uses jquery-3.tablesorter.min.js #}
-    <script src="{{ url_for('static', filename='js/jquery.cal.js') }}"></script>
+    <script src="{{ url_for('js', path='/jquery.min.js') }}"></script> {# Original uses jquery-3.5.1.min.js #}
+    <script src="{{ url_for('js', path='/common.js') }}"></script>
+    <script src="{{ url_for('js', path='/jquery.notifybar.js') }}"></script>
+    <script src="{{ url_for('js', path='/jquery.tablesorter.min.js') }}"></script> {# Original uses jquery-3.tablesorter.min.js #}
+    <script src="{{ url_for('js', path='/jquery.cal.js') }}"></script>
     {# TODO: Add tablesorte.js, insert.js, share.js, clipboard.min.js conditionally? #}
 </head>
 <body class="{{ body_class or 'desktop' }}"> {# Added body class variable #}
 <div id="wrap">
     <header role="banner"> {# Added role #}
         <h1 id="logo">
-            <a href="{{ url_for('admin_index') }}" title="YOURLS"><span>YOURLS</span>: <span>Y</span>our <span>O</span>wn <span>URL</span> <span>S</span>hortener<br/>
-            <img src="{{ url_for('static', filename='images/yourls-logo.svg') }}" id="yourls-logo" alt="YOURLS" title="YOURLS" /></a>
+            <a href="{{ request.url_for('admin_index_get') }}" title="YOURLS"><span>YOURLS</span>: <span>Y</span>our <span>O</span>wn <span>URL</span> <span>S</span>hortener<br/>
+            <img src="{{ url_for('images', path='/yourls-logo.svg') }}" id="yourls-logo" alt="YOURLS" title="YOURLS" /></a>
         </h1>
     </header>
     <nav role="navigation"> {# Added role #}
         <ul id="admin_menu">
-            {% if current_user.is_authenticated %}
-                <li id="admin_menu_logout_link">Hello {{ current_user.username }} (<a href="{{ url_for('logout') }}">Logout</a>)</li>
-                <li id="admin_menu_admin_link" class="admin_menu_toplevel"><a href="{{ url_for('admin_index') }}" title="Go to the admin interface">Admin interface</a></li>
-                <li id="admin_menu_tools_link" class="admin_menu_toplevel"><a href="#" >Tools</a></li>
-                <li id="admin_menu_plugins_link" class="admin_menu_toplevel"><a href="#" >Manage Plugins</a></li>
-                <li id="admin_menu_help_link"><a href="#">Help</a></li> {# TODO: Link to readme? #}
-            {% else %}
-                 <li id="admin_menu_login_link"><a href="{{ url_for('login') }}">Login</a></li>
-                 {# Optionally show Help link even when logged out? #}
-                 {# <li id="admin_menu_help_link"><a href="#">Help</a></li> #}
-            {% endif %}
+            {# Removed login/logout logic - show default logged-in menu for now #}
+            <li id="admin_menu_logout_link">Hello admin (Logout - disabled)</li> {# Placeholder #}
+            <li id="admin_menu_admin_link" class="admin_menu_toplevel"><a href="{{ request.url_for('admin_index_get') }}" title="Go to the admin interface">Admin interface</a></li>
+            <li id="admin_menu_tools_link" class="admin_menu_toplevel"><a href="#" >Tools</a></li>
+            <li id="admin_menu_plugins_link" class="admin_menu_toplevel"><a href="#" >Manage Plugins</a></li>
+            <li id="admin_menu_help_link"><a href="#">Help</a></li> {# TODO: Link to readme? #}
         </ul>
     </nav>
-
-    {# Display flashed messages - Structure from original (div#feedback) might be handled by JS #}
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <div id="feedback" style="display: block;"> {# Using original ID #}
-        {% for category, message in messages %}
-          <div class="{{ category }}"><p>{{ message }}</p></div> {# Simple structure #}
-        {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
 
     {# Removed the #content wrapper, main is direct child of #wrap now #}
     <main role="main"> {# Added role #}
