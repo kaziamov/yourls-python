@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, url_for, flash, redirect
+from flask import Flask, render_template, request, url_for, flash, redirect, abort
 from dotenv import load_dotenv
 import mysql.connector
 from mysql.connector import Error
@@ -263,7 +263,7 @@ def generate_next_keyword():
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
 
 # --- Routes ---
-@app.route('/', methods=['GET', 'POST']) # Allow POST requests
+@app.route('/', methods=['GET', 'POST'])
 def admin_index():
     """Renders the main admin page and handles link addition."""
     if request.method == 'POST':
@@ -332,5 +332,64 @@ def admin_index():
     context = get_admin_index_data(request.args)
     return render_template('admin_index.html', **context)
 
+@app.route('/<string:keyword>')
+def redirect_link(keyword):
+    """Handles the redirection of a short keyword to its original URL."""
+    # Sanitize the keyword first
+    # Note: YOURLS uses a specific character set, adapt sanitize_keyword if needed.
+    sanitized_keyword = sanitize_keyword(keyword) 
+    
+    if not sanitized_keyword:
+        # If sanitization results in empty string or invalid chars were used
+        return abort(404)
+
+    conn = get_db_connection()
+    if not conn:
+        # Service unavailable if DB is down
+        # Maybe show a custom error page later?
+        return abort(503, description="Database connection failed") 
+
+    cursor = None
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        # Find the URL
+        select_query = "SELECT url FROM yourls_url WHERE keyword = %(keyword)s"
+        cursor.execute(select_query, {'keyword': sanitized_keyword})
+        result = cursor.fetchone()
+        
+        if result and result['url']:
+            original_url = result['url']
+            
+            # Update click count (important to do this before redirecting)
+            try:
+                update_query = "UPDATE yourls_url SET clicks = clicks + 1 WHERE keyword = %(keyword)s"
+                # Need a separate cursor or ensure the previous one is done?
+                # Using the same cursor should be fine here.
+                cursor.execute(update_query, {'keyword': sanitized_keyword})
+                conn.commit()
+            except Error as update_err:
+                # Log the error, but still redirect if URL was found
+                print(f"DB Error (Update Clicks): {update_err}")
+                conn.rollback() # Rollback the failed click update
+
+            # Perform the redirect
+            # Use 301 for permanent redirect, as is common for URL shorteners
+            return redirect(original_url, code=301)
+        else:
+            # Keyword not found in the database
+            return abort(404)
+
+    except Error as e:
+        print(f"DB Error (Redirect): {e}")
+        # Generic server error if something went wrong during lookup
+        return abort(500, description="Database query error") 
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
+
+# --- Main execution (remains the same) ---
 if __name__ == '__main__':
-    app.run(debug=True, port=5000) 
+    app.run(debug=True, port=5000)
