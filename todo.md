@@ -4,10 +4,7 @@
 
 *These tasks likely require referencing the original PHP code for accurate implementation, compatibility, or understanding specific logic/formats.*
 
-- [x] **Keyword Generation:** Implement YOURLS-compliant sequential keyword generation (e.g., base36) in `generate_next_keyword`. (Requires knowing `yourls_get_next_keyword()` logic).
-- [x] **Keyword Sanitization:** Refine `sanitize_keyword` to exactly match YOURLS allowed characters and rules. (Requires knowing `yourls_sanitize_keyword()` logic).
-- [ ] **"Share" Feature:** Add the "Share" button to the links table and implement the corresponding share box functionality (HTML, JS). (Requires analysis of `yourls_share_box()`, `share.js`, `common.js`).
-- [ ] **"Tools" Page:** Create the `/tools` route and `tools.html` template, replicating the bookmarklet generator and potentially other tools. (Requires analysis of `tools.php` for bookmarklet code generation).
+- [ ] **"Tools" Page:** Create the `/tools` route and `tools.html` template, replicating the bookmarklet generator and potentially other tools. (Requires analysis of `tools.php` for bookmarklet code generation). UPD: Основная функциональность страницы /tools в части генерации и обработки стандартных/мгновенных/простых/пользовательских букмарклетов реализована. Социальные букмарклеты требуют доработки
 - [ ] **API Implementation:** Implement the YOURLS API endpoints in Python. (Requires detailed analysis of `yourls-api.php` for parameters, formats, auth).
 - [ ] **(Optional) "Plugins" Page:** Implement plugin management functionality (listing, activation/deactivation - complex). (Requires deep understanding of YOURLS plugin architecture).
 - [ ] **AJAX Operations (for compatibility):** Refactor Add, Edit, Delete actions to use AJAX compatible with original YOURLS JS, if aiming for full JS compatibility. (Requires analysis of `admin-ajax.php` and related JS).

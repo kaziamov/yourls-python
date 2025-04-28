@@ -5,16 +5,19 @@ import random
 import string
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode, urljoin, unquote_plus
 
 from fastapi import FastAPI, Request, Depends, Form, HTTPException, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 import mysql.connector
 from mysql.connector import Error
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
+import urllib.parse
 
 
 load_dotenv() 
@@ -508,78 +511,88 @@ async def admin_index_get(request: Request, user_id: str = Depends(get_current_u
     
     return templates.TemplateResponse("admin_index.html", context)
 
-@app.post("/", response_class=RedirectResponse, name="admin_index_post")
-async def admin_index_post(request: Request, 
-                         url: str = Form(...), 
-                         keyword: Optional[str] = Form(None), 
-                         title: Optional[str] = Form(None),
-                         user_id: str = Depends(get_current_user_or_redirect)): 
-    new_url_strip = url.strip()
-    new_title_strip = title.strip() if title else ""
-    conn = None
+@app.route("/", methods=["GET", "POST"], name="admin_index_post")
+async def add_link_endpoint(request: Request, 
+                        # Form parameters (for POST)
+                        url: Optional[str] = Form(None), 
+                        keyword: Optional[str] = Form(None), 
+                        title: Optional[str] = Form(None),
+                        # Query parameters (for GET/Bookmarklets)
+                        up: Optional[str] = None, # URL protocol from bookmarklet
+                        us: Optional[str] = None, # URL slashes from bookmarklet
+                        ur: Optional[str] = None, # URL rest from bookmarklet
+                        t: Optional[str] = None, # Title from bookmarklet
+                        s: Optional[str] = None, # Selection from bookmarklet (becomes title)
+                        k: Optional[str] = None, # Keyword from bookmarklet
+                        jsonp: Optional[str] = None, # JSONP callback name
+                        # Dependency
+                        user_id: str = Depends(get_current_user_or_redirect)): 
 
-    if not new_url_strip.lower().startswith(('http://', 'https://')):
-        add_notification(request, 'Error: URL must start with http:// or https://.', 'error')
-        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
+    is_bookmarklet = request.method == "GET" and ur is not None
+    jsonp_callback = jsonp # Rename for clarity
 
-    try:
-        conn = get_db_connection()
-        if not conn:
-            add_notification(request, 'Database connection error.', 'error')
+    # --- Determine Source of Data (Form POST or Bookmarklet GET) ---
+    if is_bookmarklet:
+        # Decode parameters carefully
+        try:
+            protocol = unquote_plus(up) if up else 'http:' # Default protocol?
+            slashes = unquote_plus(us) if us else '//'
+            rest_of_url = unquote_plus(ur)
+            source_url = f"{protocol}{slashes}{rest_of_url}"
+            source_keyword = unquote_plus(k) if k else None
+            # Prioritize selection (s) over page title (t) for the link title
+            source_title = unquote_plus(s) if s else (unquote_plus(t) if t else "")
+            source_title = source_title.strip()
+        except Exception as e:
+            print(f"Error decoding bookmarklet params: {e}")
+            # Handle error: maybe redirect or return error JSONP
+            if jsonp:
+                error_response = {"status": "fail", "message": "Error decoding parameters"}
+                return PlainTextResponse(f"{jsonp}({jsonable_encoder(error_response)});", media_type="application/javascript")
+            else:
+                add_notification(request, "Error processing bookmarklet request.", "error")
+                return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
+    elif request.method == "POST":
+        # Data from form
+        source_url = url.strip() if url else None
+        source_keyword = keyword.strip() if keyword else None
+        source_title = title.strip() if title else ""
+    else:
+        # Should not happen with methods=["GET", "POST"]
+        raise HTTPException(status_code=405, detail="Method Not Allowed")
+
+    # --- Validation ---
+    if not source_url:
+        message = "URL is required."
+        if jsonp:
+             error_response = {"status": "fail", "message": message}
+             return PlainTextResponse(f"{jsonp}({jsonable_encoder(error_response)});", media_type="application/javascript")
+        else:
+            add_notification(request, message, 'error')
+            return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
+            
+    if not source_url.lower().startswith(('http://', 'https://')):
+        message = 'Error: URL must start with http:// or https://.'
+        if jsonp:
+             error_response = {"status": "fail", "message": message}
+             return PlainTextResponse(f"{jsonp}({jsonable_encoder(error_response)});", media_type="application/javascript")
+        else:
+            add_notification(request, message, 'error')
             return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
 
-        final_keyword = None
-        if keyword:
-            # Sanitize provided keyword strictly for DB insertion
-            sanitized_custom_keyword = sanitize_keyword(keyword.strip(), restrict_to_shorturl_charset=True)
-            if not sanitized_custom_keyword:
-                 add_notification(request, f'Error: Custom keyword "{keyword}" contains invalid characters or is empty after sanitization.', 'error')
-                 return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
-            
-            if not keyword_is_free(sanitized_custom_keyword, conn):
-                 add_notification(request, f'Error: Custom keyword "{sanitized_custom_keyword}" is already taken or reserved.', 'error')
-                 return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
-            final_keyword = sanitized_custom_keyword
-        else:
-            # Generate keyword (already sanitized by its generation process)
-            final_keyword = generate_next_keyword(conn)
-            if not final_keyword:
-                 add_notification(request, 'Error: Could not generate a unique keyword. Please try again or provide a custom one.', 'error')
-                 return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_302_FOUND)
+    # Call the core function
+    result_data = await add_new_link_core(request, source_url, source_keyword, source_title)
 
-        # Fetch title if not provided
-        if not new_title_strip:
-            # Placeholder: In a real app, you might fetch the title asynchronously
-            # or handle it in a background task to avoid blocking.
-            # For simplicity, we skip title fetching here if not provided.
-            # new_title_strip = yourls_get_remote_title(new_url_strip) # Requires implementing this function
-            pass # Keep title empty if not provided
-
-        # Insert the new link
-        cursor = conn.cursor()
-        insert_query = """
-            INSERT INTO yourls_url (keyword, url, title, timestamp, ip, clicks) 
-            VALUES (%(keyword)s, %(url)s, %(title)s, NOW(), %(ip)s, 0)
-            """
-        link_data = {
-            'keyword': final_keyword,
-            'url': new_url_strip,
-            'title': new_title_strip if new_title_strip else None,
-            'ip': request.client.host
-        }
-        cursor.execute(insert_query, link_data)
-        conn.commit()
-        add_notification(request, f'Link "{final_keyword}" added successfully.', 'success')
-
-    except Error as e:
-        if conn and conn.in_transaction: conn.rollback()
-        add_notification(request, f'Database Error: {e}', 'error')
-        print(f"DB Error (Add Link): {e}")
-    finally:
-        if cursor: cursor.close()
-        if conn and conn.is_connected(): conn.close()
-
-    return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
+    # --- Return Response based on request type ---
+    if jsonp_callback:
+        # JSONP response for Instant Bookmarklets
+        js_body = f"{jsonp_callback}({jsonable_encoder(result_data)});"
+        return PlainTextResponse(js_body, media_type="application/javascript")
+    else:
+        # Standard Bookmarklet or Form POST: Redirect to admin index with notification
+        notification_type = 'success' if result_data.get("status") == "success" else 'error'
+        add_notification(request, result_data.get("message", "Operation finished."), notification_type)
+        return RedirectResponse(url=request.url_for('admin_index_get'), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/delete/{keyword}", response_class=RedirectResponse, name="delete_link")
@@ -786,68 +799,218 @@ async def edit_link_post(request: Request,
 
 
 
-def format_api_response(data, format='json'):
-    if format == 'xml':
-        xml_parts = [f"<{key}>{value}</{key}>" for key, value in data.items()]
-        return f"<result>{''.join(xml_parts)}</result>", 200, {'Content-Type': 'application/xml'} 
-    elif format == 'simple':
-        if data.get('status') == 'success' and data.get('shorturl'):
-             return data['shorturl'], 200, {'Content-Type': 'text/plain'}
-        else:
-             return f"ERROR: {data.get('message', 'Unknown error')}", data.get('statusCode', 400), {'Content-Type': 'text/plain'}
-    else: 
-        status_code = data.get('statusCode', 200 if data.get('status') == 'success' else 400)
-        return data, status_code 
+def format_api_response(data: Dict[str, Any], req_format: str = 'json') -> Tuple[Any, int, Dict[str, str]]:
+    """Formats the API response data into JSON, XML (basic), or Simple Text."""
+    simple_output = data.pop('simple', None) # Extract simple output if present
+    status_code = data.pop('statusCode', 200)
+    headers = {}
+    content = data # Default to JSON dictionary
 
-@app.api_route("/api", methods=["GET", "POST"], name="api_handler") 
-async def api_handler_route(request: Request):
-    
-    params = {**request.query_params, **await request.form()} if request.method == "POST" else request.query_params
-    
-    api_key = params.get('apikey')
-    req_format = params.get('format', 'json').lower()
-
-    if not API_KEY_STORE or api_key != API_KEY_STORE:
-        error_response = {"status": "fail", "code": "error:auth", "message": "Invalid or missing API key", "statusCode": 403}
-        content, status_code, headers = format_api_response(error_response, req_format)
+    if req_format == 'xml':
+        # Basic XML formatting - consider using a library for complex cases
+        xml_parts = [f"<{key}>{value}</{key}>" for key, value in data.items() if value is not None]
+        content = f"<?xml version=\"1.0\" encoding=\"UTF-8\"?><result>{''.join(xml_parts)}</result>"
+        headers['Content-Type'] = 'application/xml'
+    elif req_format == 'simple':
+        content = simple_output if simple_output is not None else data.get('message', 'Error')
+        headers['Content-Type'] = 'text/plain'
+        if data.get('status') != 'success' and status_code == 200:
+            status_code = 400 # Default error code for simple failure
+    else: # Default to JSON
+        headers['Content-Type'] = 'application/json'
+        content = data # Already a dictionary, FastAPI handles JSON encoding
         
-        if req_format == 'xml' or req_format == 'simple':
-             return HTMLResponse(content=content, status_code=status_code, headers=headers)
+    return content, status_code, headers
+
+@app.api_route("/api", methods=["GET", "POST"], name="api_handler", response_model=None) # Use response_model=None for flexible responses 
+async def api_handler_route(request: Request):
+    params = {}
+    if request.method == "POST":
+        try:
+            # Try parsing JSON body first
+            if request.headers.get("content-type") == "application/json":
+                params = await request.json()
+            else:
+                 # Fallback to form data
+                params = {**request.query_params, **await request.form()}
+        except Exception: # Handle cases where body is not valid JSON or form
+             params = {**request.query_params, **await request.form()} if await request.body() else {**request.query_params}
+    else: # GET
+        params = {**request.query_params}
+
+    # --- Authentication --- 
+    api_key_param = params.get('apikey') # Allow key via GET/POST/JSON
+    # TODO: Implement signature validation if needed
+    # signature = params.get('signature')
+    # timestamp = params.get('timestamp')
+    
+    authenticated = False
+    if API_KEY_STORE:
+        if api_key_param and api_key_param == API_KEY_STORE:
+            authenticated = True
+        # Add signature check logic here if implementing signatures
+        # elif signature and timestamp:
+        #     # Calculate expected signature based on params + timestamp + secret
+        #     # Compare signatures
+        #     pass 
+        
+    # Allow access without API key if API_KEY_STORE is not set in .env (optional)
+    # elif not API_KEY_STORE:
+    #     authenticated = True
+        
+    req_format = params.get('format', 'json').lower()
+    jsonp_callback = params.get('callback') or params.get('jsonp')
+    if jsonp_callback:
+        req_format = 'jsonp' # Override format if jsonp/callback is present
+
+    if not authenticated:
+        error_response = {"status": "fail", "code": "error:auth", "message": "Invalid or missing authentication credentials", "statusCode": 403}
+        content, status_code, headers = format_api_response(error_response, req_format if req_format != 'jsonp' else 'json')
+        if jsonp_callback:
+             js_body = f"{jsonp_callback}({jsonable_encoder(content)});"
+             return PlainTextResponse(js_body, status_code=status_code, media_type="application/javascript")
+        elif req_format == 'xml' or req_format == 'simple':
+             return PlainTextResponse(content, status_code=status_code, headers=headers)
         else:
-             return await app.exception_handler(HTTPException(status_code=status_code, detail=content)) 
+             return JSONResponse(content=content, status_code=status_code, headers=headers)
 
-
+    # --- Action Handling --- 
     action = params.get('action')
+    response_data = {}
 
     if action == 'shorturl':
-        long_url = params.get('url', '').strip()
+        source_url = params.get('url', '').strip()
+        source_keyword = params.get('keyword', '').strip() or None
+        source_title = params.get('title', '').strip() or None
         
-        
-        
-        
-        
-        
-        
-        
-        
-        success_response = {"status": "success", "message": "shorturl placeholder", "shorturl": "http://.../placeholder", "statusCode": 200}
-        content, status_code, headers = format_api_response(success_response, req_format)
-        if req_format == 'xml' or req_format == 'simple':
-            return HTMLResponse(content=content, status_code=status_code, headers=headers)
+        # Basic validation needed here before calling core
+        if not source_url or not source_url.lower().startswith(('http://', 'https://')):
+             response_data = {"status": "fail", "message": "Missing or invalid URL parameter.", "statusCode": 400}
         else:
-            return success_response 
+            response_data = await add_new_link_core(request, source_url, source_keyword, source_title)
+            # Add 'simple' output for this action
+            if response_data.get('status') == 'success':
+                 response_data['simple'] = response_data.get('shorturl')
+            else:
+                 response_data['simple'] = response_data.get('message')
 
+    elif action == 'expand':
+        shorturl_param = params.get('shorturl', '').strip()
+        keyword = sanitize_keyword(shorturl_param.split('/')[-1]) # Extract keyword
+        
+        if not keyword:
+            response_data = {"status": "fail", "message": "Missing or invalid shorturl parameter.", "statusCode": 400}
+        else:
+            conn = get_db_connection()
+            if not conn:
+                response_data = {"status": "fail", "message": "Database connection error.", "statusCode": 503}
+            else:
+                cursor = None
+                try:
+                    cursor = conn.cursor(dictionary=True)
+                    query = "SELECT url, title FROM yourls_url WHERE keyword = %(keyword)s"
+                    cursor.execute(query, {'keyword': keyword})
+                    result = cursor.fetchone()
+                    if result and result['url']:
+                         response_data = {
+                            'keyword': keyword,
+                            'shorturl': str(request.base_url).rstrip('/') + '/' + keyword,
+                            'longurl': result['url'],
+                            'title': result['title'],
+                            'simple': result['url'],
+                            'message': 'success',
+                            'statusCode': 200,
+                        }
+                    else:
+                         response_data = {
+                            'keyword': keyword,
+                            'simple': 'not found',
+                            'message': 'Error: short URL not found',
+                            'statusCode': 404,
+                        }
+                except Error as e:
+                    print(f"DB Error (API Expand): {e}")
+                    response_data = {"status": "fail", "message": "Database query error.", "statusCode": 500}
+                finally:
+                    if cursor: cursor.close()
+                    if conn and conn.is_connected(): conn.close()
+                    
+    elif action == 'version':
+        # Replace with actual version if available
+        app_version = "1.0-fastapi" 
+        response_data = {'version': app_version, 'simple': app_version, 'statusCode': 200}
+        # Add DB version if needed and available
+        # db_version = get_option('db_version', 'unknown')
+        # response_data['db_version'] = db_version
 
-    
-    
+    elif action == 'db-stats':
+        stats = get_db_stats_core()
+        response_data = {
+            'db_stats': stats, # Original API nests it
+            'message': 'success',
+            'simple': 'DB Stats: Links: {:,}, Clicks: {:,}'.format(stats['total_links'], stats['total_clicks']), # Custom simple format
+            'statusCode': 200
+        }
+
+    elif action == 'url-stats':
+        shorturl_param = params.get('shorturl', '').strip()
+        keyword = sanitize_keyword(shorturl_param.split('/')[-1]) # Extract keyword
+
+        if not keyword:
+            response_data = {"status": "fail", "message": "Missing or invalid shorturl parameter.", "statusCode": 400}
+        else:
+            link_stats = get_url_stats_core(keyword)
+            if link_stats:
+                # Construct short URL link for the response
+                link_short_url = str(request.base_url).rstrip('/') + '/' + link_stats['keyword']
+                response_data = {
+                    'statusCode': 200,
+                    'message': 'success',
+                    'link': { # Original API nests it
+                        'shorturl': link_short_url,
+                        'url': link_stats['url'],
+                        'title': link_stats['title'],
+                        'timestamp': link_stats['timestamp'],
+                        'ip': link_stats['ip'],
+                        'clicks': link_stats['clicks']
+                    }
+                }
+            else:
+                 response_data = {
+                    'statusCode': 404,
+                    'message': 'Error: short URL not found'
+                }
+            # Define simple output for url-stats (e.g., click count)
+            response_data['simple'] = f"Clicks: {link_stats['clicks']}" if link_stats else "not found"
+
+    elif action == 'stats':
+        filter_type = params.get('filter', 'top')
+        limit = params.get('limit', 10)
+        start = params.get('start', 0)
+        
+        stats_result = get_filtered_links_core(filter_type, limit, start)
+        
+        response_data = {
+            'statusCode': 200,
+            'message': 'success',
+            'links': stats_result.get('links', {}), # Nested under 'links'
+            'stats': stats_result.get('stats', {}), # Nested under 'stats'
+            'simple': 'Stats requires JSON or XML format' # Original API simple response
+        }
+
     else:
-        
-        error_response = {"status": "fail", "code": "error:action", "message": "Unknown action", "statusCode": 400}
-        content, status_code, headers = format_api_response(error_response, req_format)
-        if req_format == 'xml' or req_format == 'simple':
-             return HTMLResponse(content=content, status_code=status_code, headers=headers)
-        else:
-            raise HTTPException(status_code=status_code, detail=content) 
+        response_data = {"status": "fail", "code": "error:action", "message": "Unknown action", "statusCode": 400}
+
+    # --- Format and Return Response --- 
+    final_content, final_status_code, final_headers = format_api_response(response_data.copy(), req_format if req_format != 'jsonp' else 'json')
+
+    if jsonp_callback:
+        js_body = f"{jsonp_callback}({jsonable_encoder(final_content)});"
+        return PlainTextResponse(js_body, status_code=final_status_code, media_type="application/javascript", headers=final_headers)
+    elif req_format == 'xml' or req_format == 'simple':
+        return PlainTextResponse(final_content, status_code=final_status_code, headers=final_headers)
+    else: # JSON
+        return JSONResponse(content=final_content, status_code=final_status_code, headers=final_headers)
 
 
 @app.get("/{keyword}", response_class=RedirectResponse, name="redirect_link")
@@ -918,5 +1081,266 @@ async def redirect_link_get(request: Request, keyword: str):
     finally:
         if cursor: cursor.close()
         if conn and conn.is_connected(): conn.close()
+
+
+# --- Bookmarklet Helper ---
+def make_bookmarklet(js_code: str) -> str:
+    """Formats JavaScript code into a javascript: URL."""
+    # Assume js_code is already somewhat clean (no comments, minimal whitespace)
+    # Wrap in (function(){...})(); and encode
+    formatted_js = f"(function(){{{js_code.strip()}}})();"
+    # Use quote_plus for space -> + encoding, typical for bookmarklets
+    # Ensure base_url doesn't break the JS string context if inserted directly
+    encoded_js = urllib.parse.quote_plus(formatted_js, safe=":/?&=()'") # Keep some chars safe
+    return f"javascript:{encoded_js}"
+
+# Route for the Tools page (Bookmarklets)
+@app.get("/tools", response_class=HTMLResponse, name="tools_get")
+async def tools_get(request: Request, user_id: str = Depends(get_current_user_or_redirect)):
+    base_bookmarklet_url_raw = str(request.url_for('admin_index_post')) 
+    base_bookmarklet_url = urllib.parse.urljoin(str(request.base_url), base_bookmarklet_url_raw)
+    # Escape single quotes in URL for safe insertion into JS strings
+    safe_base_url = base_bookmarklet_url.replace("'", "\\'") 
+
+    # Define JS templates as cleaner multi-line strings
+    standard_simple_js = '''
+        var d=document,w=window,enc=encodeURIComponent,e=w.getSelection,k=d.getSelection,x=d.selection,
+            s=(e?e():(k?k():(x?x.createRange().text:0))),s2=((s.toString()=='')?s:enc(s)),
+            f='{base_url}',l=d.location.href,
+            ups=l.match(/^[a-zA-Z0-9\+\.-]+:(\/\/)?/)[0],ur=l.split(new RegExp(ups))[1],ups=ups.split(/:/),
+            p='?up='+enc(ups[0]+':')+'&us='+enc(ups[1])+'&ur='+enc(ur)+'&t='+enc(d.title)+'&s='+s2,u=f+p;
+        try{{throw('ozh');}}catch(z){{a=function(){{if(!w.open(u))l.href=u;}};if(/Firefox/.test(navigator.userAgent))setTimeout(a,0);else a();}}
+        void(0);
+    '''.format(base_url=safe_base_url)
+
+    popup_simple_js = '''
+        var d=document,sc=d.createElement('script'),l=d.location.href,enc=encodeURIComponent,
+            ups=l.match(/^[a-zA-Z0-9\+\.-]+:(\/\/)?/)[0],ur=l.split(new RegExp(ups))[1],ups=ups.split(/:/),
+            p='?up='+enc(ups[0]+':')+'&us='+enc(ups[1])+'&ur='+enc(ur)+'&t='+enc(d.title);
+        window.yourls_callback=function(r){{if(r.shorturl){{prompt(r.message,r.shorturl);}}else{{alert('An error occurred: '+r.message);}};}};
+        sc.src='{base_url}'+p+'&jsonp=yourls_callback';
+        void(d.body.appendChild(sc));
+    '''.format(base_url=safe_base_url)
+
+    custom_standard_js = '''
+        var d=document,enc=encodeURIComponent,w=window,e=w.getSelection,k_sel=d.getSelection,x=d.selection,
+            s=(e?e():(k_sel?k_sel():(x?x.createRange().text:0))),s2=((s.toString()=='')?s:enc(s)),
+            f='{base_url}',l=d.location.href,
+            ups=l.match(/^[a-zA-Z0-9\+\.-]+:(\/\/)?/)[0],ur=l.split(new RegExp(ups))[1],ups=ups.split(/:/),
+            k=prompt("Custom keyword for "+l),k2=(k?'&k='+enc(k):""),
+            p='?up='+enc(ups[0]+':')+'&us='+enc(ups[1])+'&ur='+enc(ur)+'&t='+enc(d.title)+'&s='+s2+k2,u=f+p;
+        if(k!=null){{try{{throw('ozh');}}catch(z){{a=function(){{if(!w.open(u))l.href=u;}};if(/Firefox/.test(navigator.userAgent))setTimeout(a,0);else a();}}void(0)}}
+    '''.format(base_url=safe_base_url)
+
+    custom_popup_js = '''
+        var d=document,l=d.location.href,k=prompt('Custom keyword for '+l),enc=encodeURIComponent,
+            ups=l.match(/^[a-zA-Z0-9\+\.-]+:(\/\/)?/)[0],ur=l.split(new RegExp(ups))[1],ups=ups.split(/:/),
+            p='?up='+enc(ups[0]+':')+'&us='+enc(ups[1])+'&ur='+enc(ur)+'&t='+enc(d.title),sc=d.createElement('script');
+        if(k!=null){{window.yourls_callback=function(r){{if(r.shorturl){{prompt(r.message,r.shorturl);}}else{{alert('An error occurred: '+r.message);}};}};sc.src='{base_url}'+p+'&k='+enc(k)+'&jsonp=yourls_callback';void(d.body.appendChild(sc));}}
+    '''.format(base_url=safe_base_url)
+
+    facebook_js = '''
+        var d=document,w=window,enc=encodeURIComponent,l=d.location.href,
+            f='{base_url}',p='?url='+enc(l)+'&source=fb_bm';
+        a=function(){{if(!w.open(f+p))l.href=f+p;}};if(/Firefox/.test(navigator.userAgent))setTimeout(a,0);else a();void(0);
+    '''.format(base_url=safe_base_url)
+
+    twitter_js = '''
+        var d=document,w=window,enc=encodeURIComponent,l=d.location.href,
+            s=w.getSelection?w.getSelection():(d.getSelection?d.getSelection():(d.selection?d.selection.createRange().text:0)),
+            s2=((s.toString()=='')?s:enc(' "' + s + '"')),
+            f='{base_url}',p='?url='+enc(l)+'&title='+enc(d.title)+s2+'&source=tw_bm';
+        a=function(){{if(!w.open(f+p))l.href=f+p;}};if(/Firefox/.test(navigator.userAgent))setTimeout(a,0);else a();void(0);
+    '''.format(base_url=safe_base_url)
+    
+    bookmarklets = {
+        'standard_simple': make_bookmarklet(standard_simple_js),
+        'popup_simple': make_bookmarklet(popup_simple_js),
+        'custom_standard': make_bookmarklet(custom_standard_js),
+        'custom_popup': make_bookmarklet(custom_popup_js),
+        'facebook': make_bookmarklet(facebook_js),
+        'twitter': make_bookmarklet(twitter_js),
+    }
+    
+    context = {
+        "request": request, 
+        "page_title": "YOURLS Tools", 
+        "bookmarklets": bookmarklets,
+        "current_user_id": user_id
+    }
+    return templates.TemplateResponse("tools.html", context)
+
+# --- Core Link Operations ---
+
+async def add_new_link_core(request: Request, source_url: str, source_keyword: Optional[str], source_title: Optional[str]) -> Dict[str, Any]:
+    """Core logic for adding a new link. Returns a dictionary with result."""
+    conn = None
+    cursor = None
+    final_keyword = None
+    response_data = {}
+    status_code = 200
+
+    try:
+        # --- Validation (moved basic validation outside before calling this) ---
+        # if not source_url or not source_url.lower().startswith(('http://', 'https://')):
+        #     raise ValueError("Invalid URL format.")
+
+        conn = get_db_connection()
+        if not conn:
+            raise Exception("Database connection error.")
+
+        if source_keyword:
+            sanitized_custom_keyword = sanitize_keyword(source_keyword, restrict_to_shorturl_charset=True)
+            if not sanitized_custom_keyword:
+                 raise ValueError(f'Custom keyword "{source_keyword}" contains invalid characters or is empty after sanitization.')
+            if not keyword_is_free(sanitized_custom_keyword, conn):
+                 raise ValueError(f'Custom keyword "{sanitized_custom_keyword}" is already taken or reserved.')
+            final_keyword = sanitized_custom_keyword
+        else:
+            final_keyword = generate_next_keyword(conn)
+            if not final_keyword:
+                 raise Exception('Could not generate a unique keyword.')
+
+        final_title = source_title # Placeholder for potential title fetching
+        
+        cursor = conn.cursor()
+        insert_query = """
+            INSERT INTO yourls_url (keyword, url, title, timestamp, ip, clicks) 
+            VALUES (%(keyword)s, %(url)s, %(title)s, NOW(), %(ip)s, 0)
+            """
+        link_data = {
+            'keyword': final_keyword,
+            'url': source_url,
+            'title': final_title if final_title else None,
+            'ip': request.client.host if request else 'api' # Get IP from request if available
+        }
+        cursor.execute(insert_query, link_data)
+        conn.commit()
+        
+        short_url_base = str(request.base_url) if request else 'http://localhost/' # Need base URL
+        short_url = short_url_base.rstrip('/') + '/' + final_keyword
+        response_data = {
+            "status": "success", "message": f'Link {final_keyword} added to database',
+            "title": final_title, "shorturl": short_url, "keyword": final_keyword,
+            "url": { "keyword": final_keyword, "url": source_url, "title": final_title, 
+                     "date": datetime.now().isoformat(), "ip": link_data['ip'], "clicks": 0 }
+        }
+        status_code = 200
+
+    except (ValueError, Exception) as e: 
+        if conn and conn.in_transaction: conn.rollback()
+        error_message = str(e)
+        print(f"Error in add_new_link_core: {error_message}")
+        response_data = {"status": "fail", "message": error_message}
+        status_code = 400 
+        final_keyword = None 
+    finally:
+        if cursor: cursor.close()
+        if conn and conn.is_connected(): conn.close()
+        
+    # Add statusCode to the response for consistency with API format
+    response_data['statusCode'] = status_code 
+    return response_data
+
+# --- Core Stats Operations ---
+
+def get_db_stats_core() -> Dict[str, Any]:
+    """Fetches total link count and total clicks from the database."""
+    conn = get_db_connection()
+    stats = {'total_links': 0, 'total_clicks': 0}
+    if not conn:
+        print("Error: DB connection failed for get_db_stats_core")
+        return stats # Return default zero stats on error
+
+    cursor = None
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT COUNT(*) as count, SUM(clicks) as clicks_sum FROM yourls_url")
+        result = cursor.fetchone()
+        if result:
+            stats['total_links'] = result['count'] or 0
+            # Convert potential Decimal from SUM() to int
+            stats['total_clicks'] = int(result['clicks_sum'] or 0) 
+    except Error as e:
+        print(f"DB Error getting DB stats: {e}")
+    finally:
+        if cursor: cursor.close()
+        if conn and conn.is_connected(): conn.close()
+    return stats
+
+def get_url_stats_core(keyword: str) -> Dict[str, Any]:
+    """Fetches statistics for a specific keyword."""
+    conn = get_db_connection()
+    link_stats = None
+    if not conn:
+        print("Error: DB connection failed for get_url_stats_core")
+        return None
+
+    cursor = None
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = "SELECT keyword, url, title, timestamp, ip, clicks FROM yourls_url WHERE keyword = %(keyword)s"
+        cursor.execute(query, {'keyword': keyword})
+        link_stats = cursor.fetchone()
+        # Convert timestamp to string format if needed, FastAPI might handle datetime directly
+        if link_stats and isinstance(link_stats.get('timestamp'), datetime):
+             link_stats['timestamp'] = link_stats['timestamp'].isoformat()
+            
+    except Error as e:
+        print(f"DB Error getting URL stats for {keyword}: {e}")
+    finally:
+        if cursor: cursor.close()
+        if conn and conn.is_connected(): conn.close()
+    return link_stats
+
+def get_filtered_links_core(filter_type: str = 'top', limit: int = 10, start: int = 0) -> Dict[str, Any]:
+    """Fetches a list of links based on filter type (top, bottom, last, rand) and pagination."""
+    conn = get_db_connection()
+    result = {"links": [], "stats": {"filter": filter_type, "limit": limit, "start": start, "count": 0}}
+    if not conn:
+        print("Error: DB connection failed for get_filtered_links_core")
+        return result
+
+    valid_filters = {'top': 'clicks DESC', 'bottom': 'clicks ASC', 'last': 'timestamp DESC', 'rand': 'RAND()'}
+    order_by = valid_filters.get(filter_type.lower(), valid_filters['top']) # Default to top
+
+    # Sanitize limit and start
+    try:
+        limit = int(limit)
+        start = int(start)
+        if limit <= 0: limit = 10
+        if start < 0: start = 0
+    except (ValueError, TypeError):
+        limit = 10
+        start = 0
+
+    cursor = None
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = f"""
+            SELECT keyword, url, title, timestamp, ip, clicks 
+            FROM yourls_url 
+            ORDER BY {order_by} 
+            LIMIT %(limit)s OFFSET %(offset)s
+        """
+        cursor.execute(query, {'limit': limit, 'offset': start})
+        links = cursor.fetchall()
+        
+        # Convert timestamps for JSON serialization if needed
+        for link in links:
+            if isinstance(link.get('timestamp'), datetime):
+                link['timestamp'] = link['timestamp'].isoformat()
+
+        result["links"] = {
+            f"link_{i}": link for i, link in enumerate(links) # Structure like original API: link_0, link_1 ...
+        }
+        result["stats"]["count"] = len(links)
+
+    except Error as e:
+        print(f"DB Error getting filtered links ({filter_type}): {e}")
+    finally:
+        if cursor: cursor.close()
+        if conn and conn.is_connected(): conn.close()
+    return result
 
 

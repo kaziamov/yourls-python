@@ -22,6 +22,7 @@ dependencies = [
     "python-dotenv>=0.19",
     "python-multipart>=0.0.20",
     "itsdangerous>=2.2.0",
+    "passlib[bcrypt]>=1.7.4",
 ]
 
 [project.optional-dependencies]
