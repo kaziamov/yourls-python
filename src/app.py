@@ -709,26 +709,44 @@ async def redirect_link_get(request: Request, keyword: str):
         if result and result['url']:
             original_url = result['url']
             
+            # Log the click and update count
             try:
                 click_time = datetime.now()
                 referrer = request.headers.get('referer', None)
-                user_agent = request.headers.get('user-agent', 'Unknown')[:255]
+                user_agent = request.headers.get('user-agent', 'Unknown')[:255] # Limit length
                 ip_address = request.client.host
-                country_code = None 
+                country_code = None # Set to None, assuming DB column allows NULL
 
-                log_query = "INSERT INTO yourls_log (...) VALUES (...)"
-                log_data = { ... }
+                # Correct SQL INSERT for the log table
+                log_query = """
+                    INSERT INTO yourls_log 
+                    (click_time, shorturl, referrer, user_agent, ip_address, country_code) 
+                    VALUES (%(click_time)s, %(shorturl)s, %(referrer)s, %(user_agent)s, %(ip_address)s, %(country_code)s)
+                    """
+                log_data = {
+                    'click_time': click_time,
+                    'shorturl': sanitized_keyword,
+                    'referrer': referrer,
+                    'user_agent': user_agent,
+                    'ip_address': ip_address,
+                    'country_code': country_code
+                }
                 cursor.execute(log_query, log_data)
 
+                # Update click count for the main URL entry
                 update_query = "UPDATE yourls_url SET clicks = clicks + 1 WHERE keyword = %(keyword)s"
                 cursor.execute(update_query, {'keyword': sanitized_keyword})
-                conn.commit()
+                conn.commit() # Commit both insert and update
             except Error as log_update_err:
+                # Log the error but don't necessarily prevent the redirect
                 print(f"DB Error (Log/Update Clicks): {log_update_err}")
-                conn.rollback()
+                # Rollback if something went wrong with logging/updating
+                if conn.in_transaction: conn.rollback()
 
+            # Proceed with the redirect even if logging failed (optional behaviour)
             return RedirectResponse(url=original_url, status_code=status.HTTP_301_MOVED_PERMANENTLY)
         else:
+            # Keyword not found in the database
             raise HTTPException(status_code=404, detail="Keyword not found")
 
     except Error as e:
